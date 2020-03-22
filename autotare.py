@@ -13,3 +13,6 @@ req.connect(True, channel_type="random")
 print("ok")
 val = req.read_by_uuid("00002a00-0000-1000-8000-00805f9b34fb")
 print(val)
+
+# req.write_cmd(0x13, bytes([0xa]))
+# print("write done")

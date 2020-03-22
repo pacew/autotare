@@ -1,0 +1,24 @@
+#! /bin/sh
+
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0001
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0002
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0003
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0004
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0005
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0006
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0007
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0008
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0009
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x000a
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x000b
+
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x000d
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x000e
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x000f
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0010
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0011
+gatttool -b DC:99:65:B8:F1:F6 -t random  --char-read --handle=0x0012
+
+
+
+
