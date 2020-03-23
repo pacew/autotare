@@ -1,3 +1,7 @@
+gatttool -b DC:99:65:B8:F1:F6 -t random --char-write-req --handle=0x13 --value=0xa
+
+
+
 https://github.com/noble/noble node.js
 
 
@@ -94,3 +98,16 @@ handle: 0x0010, uuid: 6e400003-b5a3-f393-e0a9-e50e24dcca9e
 handle: 0x0011, uuid: 00002902-0000-1000-8000-00805f9b34fb
 handle: 0x0012, uuid: 00002803-0000-1000-8000-00805f9b34fb
 handle: 0x0013, uuid: 6e400002-b5a3-f393-e0a9-e50e24dcca9e
+
+================================================================
+
+pip3 install virtualenv
+WORKON_HOME=~/.virtualenvs
+mkdir $WORKON_HOME
+pip3 install virtualenvwrapper
+
+in bashrc . /usr/local/bin/virtualenvwrapper.sh
+
+mkvirtualenv proj
+workon proj
+lsvirtualenv
