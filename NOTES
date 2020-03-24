@@ -1,4 +1,4 @@
-gatttool -b DC:99:65:B8:F1:F6 -t random --char-write-req --handle=0x13 --value=0xa
+gatttool -b DC:99:65:B8:F1:F6 -t random --char-write-req --handle=0x13 --value=660a
 
 https://bitbucket.org/OscarAcena/pygattlib/src/default/
 sudo pip3 download gattlib  
