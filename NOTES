@@ -1,5 +1,12 @@
 gatttool -b DC:99:65:B8:F1:F6 -t random --char-write-req --handle=0x13 --value=0xa
 
+https://bitbucket.org/OscarAcena/pygattlib/src/default/
+sudo pip3 download gattlib  
+sudo tar xvzf ./gattlib-0.20200122.tar.gz
+cd gattlib-0.20200122/
+sudo sed -ie 's/boost_python-py34/boost_python36/' setup.py
+pip3 install .
+
 
 
 https://github.com/noble/noble node.js
