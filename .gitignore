@@ -5,3 +5,4 @@ bt
 *.o
 .bluetooth_addr
 pair
+desc
