@@ -1,9 +1,12 @@
 CFLAGS = -g -Wall
 
-all: bt pair simplescan pair2
+all: bt pair lescan
 
 bt: bt.o
 	$(CC) $(CFLAGS) -o bt bt.o -lbluetooth
+
+lescan: lescan.o
+	$(CC) $(CFLAGS) -o lescan lescan.o -lbluetooth
 
 simplescan: simplescan.o
 	$(CC) $(CFLAGS) -o simplescan simplescan.o -lbluetooth

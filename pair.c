@@ -444,6 +444,23 @@ process_scan_result (void)
 	}
 }
 
+void
+handle_input (struct dev *dp)
+{
+	char buf[100];
+	int n;
+
+	if ((n = read (dp->sock, buf, sizeof buf)) < 0) {
+		perror ("read");
+		return;
+	}
+
+	printf ("%s input %d\n", dp->addrstr, n);
+	dump (buf, n);
+}
+	
+	
+
 int
 main (int argc, char **argv)
 {
@@ -473,7 +490,7 @@ main (int argc, char **argv)
 	/* make sure scanning is disabled */
 	hci_le_set_scan_enable(scan_sock, 0, filter_dup, 10000);
 
-	uint8_t scan_type = 0; /* 1=active, 0=passive */
+	uint8_t scan_type = 1; /* 1=active, 0=passive */
 	uint16_t interval = htobs(0x0010);
 	uint16_t window = htobs (0x0010);
 	uint8_t own_type = LE_PUBLIC_ADDRESS;
@@ -514,11 +531,18 @@ main (int argc, char **argv)
 			maxfd = scan_sock;
 		
 		for (dp = devs; dp; dp = dp->next) {
-			if (dp->state == S_CONNECTING) {
+			switch (dp->state) {
+			case S_CONNECTING:
 				FD_SET (dp->sock, &wset);
-				if (dp->sock > maxfd)
-					maxfd = dp->sock;
+				break;
+			case S_CONNECTED:
+				FD_SET (dp->sock, &rset);
+				break;
+			default:
+				break;
 			}
+			if (dp->sock > maxfd)
+				maxfd = dp->sock;
 		}
 
 		if (select (maxfd + 1, &rset, &wset, NULL, NULL) < 0) {
@@ -530,9 +554,17 @@ main (int argc, char **argv)
 			process_scan_result ();
 		}
 		for (dp = devs; dp; dp = dp->next) {
-			if (dp->state == S_CONNECTING 
-			    && FD_ISSET (dp->sock, &wset)) {
-				handle_connected (dp);
+			switch (dp->state) {
+			case S_CONNECTING:
+				if (FD_ISSET (dp->sock, &wset))
+					handle_connected (dp);
+				break;
+			case S_CONNECTED:
+				if (FD_ISSET (dp->sock, &rset))
+					handle_input (dp);
+				break;
+			default:
+				break;
 			}
 		}
 	}

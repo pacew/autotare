@@ -333,7 +333,7 @@ do_pair (void)
 	uint8_t filter_dup = 0x01;
 	hci_le_set_scan_enable(sock, 0x00, filter_dup, 10000);
 
-	uint8_t scan_type = 0; /* 1=active, 0=passive */
+	uint8_t scan_type = 1; /* 1=active, 0=passive */
 	uint16_t interval = htobs(0x0010);
 	uint16_t window = htobs (0x0010);
 	uint8_t own_type = LE_PUBLIC_ADDRESS;
