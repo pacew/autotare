@@ -1,19 +1,7 @@
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
 #include <stdio.h>
-#include <errno.h>
-#include <ctype.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <string.h>
-#include <getopt.h>
-#include <sys/param.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <signal.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -21,12 +9,6 @@
 
 
 
-/* Unofficial value, might still change */
-#define LE_LINK		0x80
-
-#define FLAGS_AD_TYPE 0x01
-#define FLAGS_LIMITED_MODE_BIT 0x01
-#define FLAGS_GENERAL_MODE_BIT 0x02
 
 #define EIR_FLAGS                   0x01  /* flags */
 #define EIR_UUID16_SOME             0x02  /* 16-bit UUID, more available */
@@ -39,41 +21,6 @@
 #define EIR_NAME_COMPLETE           0x09  /* complete local name */
 #define EIR_TX_POWER                0x0A  /* transmit power level */
 #define EIR_DEVICE_ID               0x10  /* device ID */
-
-#define for_each_opt(opt, long, short) while ((opt=getopt_long(argc, argv, short ? short:"+", long, NULL)) != -1)
-
-static volatile int signal_received = 0;
-
-void
-dump (void *buf, int n)
-{
-	int i;
-	int j;
-	int c;
-
-	for (i = 0; i < n; i += 16) {
-		printf ("%04x: ", i);
-		for (j = 0; j < 16; j++) {
-			if (i+j < n)
-				printf ("%02x ", ((unsigned char *)buf)[i+j]);
-			else
-				printf ("   ");
-		}
-		printf ("  ");
-		for (j = 0; j < 16; j++) {
-			c = ((unsigned char *)buf)[i+j] & 0x7f;
-			if (i+j >= n)
-				putchar (' ');
-			else if (c < ' ' || c == 0x7f)
-				putchar ('.');
-			else
-				putchar (c);
-		}
-		printf ("\n");
-
-	}
-}
-
 
 static void eir_parse_name(uint8_t *eir, size_t eir_len,
 						char *buf, size_t buf_len)
@@ -100,8 +47,6 @@ static void eir_parse_name(uint8_t *eir, size_t eir_len,
 				goto failed;
 
 			memcpy(buf, &eir[2], name_len);
-			if (strncmp (buf, "CIRCUIT", 7) == 0)
-				printf ("****");
 			return;
 		}
 
@@ -110,15 +55,154 @@ static void eir_parse_name(uint8_t *eir, size_t eir_len,
 	}
 
 failed:
-	snprintf(buf, buf_len, "(unknown)");
+	buf[0] = 0;
+}
+
+struct dev {
+	struct dev *next;
+	int devnum;
+	char *addr;
+	char *name;
+};
+
+struct dev *devs;
+int last_devnum;
+
+struct dev *
+find_dev (int devnum)
+{
+	struct dev *dp;
+
+	for (dp = devs; dp; dp = dp->next) {
+		if (dp->devnum == devnum)
+			return (dp);
+	}
+
+	return (NULL);
+}
+
+void
+add_device (char *addr, char *name)
+{
+	struct dev *dp;
+
+	for (dp = devs; dp; dp = dp->next) {
+		if (strcmp (dp->addr, addr) == 0
+		    && strcmp (dp->name, name) == 0) {
+			break;
+		}
+	}
+	
+	if (dp == NULL) {
+		dp = calloc (1, sizeof *dp);
+		dp->devnum = ++last_devnum;
+		dp->addr = strdup (addr);
+		dp->name = strdup (name);
+		dp->next = devs;
+		devs = dp;
+
+		printf ("%-2d %-30.30s %-20s\n",
+			dp->devnum, dp->name, dp->addr);
+	}
 }
 
 
-int
-main(int argc, char **argv)
+void
+process_input (int dd)
 {
-	int dev_id;
+	unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
+	int len;
+	
+	if ((len = read(dd, buf, sizeof(buf))) < 0)
+		return;
+	
+	evt_le_meta_event *meta;
+	le_advertising_info *info;
+	char addr[18];
 
+	ptr = buf + (1 + HCI_EVENT_HDR_SIZE);
+	len -= (1 + HCI_EVENT_HDR_SIZE);
+
+	meta = (void *) ptr;
+
+	if (meta->subevent != 0x02)
+		return;
+
+	info = (le_advertising_info *) (meta->data + 1);
+
+	char name[30];
+
+	memset(name, 0, sizeof(name));
+
+	ba2str(&info->bdaddr, addr);
+	eir_parse_name(info->data, info->length,
+		       name, sizeof(name) - 1);
+	
+	add_device (addr, name);
+}
+
+char *outname;
+
+int
+process_stdin (void)
+{
+	int devnum;
+	struct dev *dp;
+	FILE *outf;
+	
+	if (scanf ("%d", &devnum) != 1)
+		goto bad;
+
+	if ((dp = find_dev (devnum)) == NULL)
+		goto bad;
+
+	remove (outname);
+	if ((outf = fopen (outname, "w")) == NULL) {
+		fprintf (stderr, "can't create %s\n", outname);
+		exit (1);
+	}
+	fprintf (outf, "%s\n", dp->addr);
+	fclose (outf);
+	printf ("selected %s (%s)\n", dp->name, dp->addr);
+	return (0);
+
+bad:
+	printf ("invalid selection\n");
+	return (-1);
+}
+
+
+void
+usage (void)
+{
+	fprintf (stderr, "usage: btpair [-o file]\n");
+	exit (1);
+}
+
+int
+main (int argc, char **argv)
+{
+	int c;
+
+	outname = ".bluetooth_addr";
+	
+	while ((c = getopt (argc, argv, "o:")) != EOF) {
+		switch (c) {
+		case 'o':
+			outname = optarg;
+			break;
+		default:
+			usage ();
+		}
+	}
+
+	if (optind != argc)
+		usage ();
+	
+	if (geteuid () != 0)
+		printf ("should be root\n");
+
+	int dev_id;
 	int dd;
 	uint8_t own_type = LE_PUBLIC_ADDRESS;
 	uint8_t scan_type = 0x01;
@@ -126,7 +210,6 @@ main(int argc, char **argv)
 	uint16_t interval = htobs(0x0010);
 	uint16_t window = htobs(0x0010);
 	uint8_t filter_dup = 0x01;
-
 
 	dev_id = hci_get_route (NULL);
 	if ((dd = hci_open_dev (dev_id)) < 0) {
@@ -147,9 +230,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
 	struct hci_filter nf;
-	int len;
 
 	hci_filter_clear(&nf);
 	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
@@ -160,50 +241,32 @@ main(int argc, char **argv)
 		return -1;
 	}
 
+	fcntl (dd, F_SETFL, O_NONBLOCK);
+	
 	while (1) {
-		evt_le_meta_event *meta;
-		le_advertising_info *info;
-		char addr[18];
+		fd_set rset;
 
-		while ((len = read(dd, buf, sizeof(buf))) < 0) {
-			if (errno == EINTR && signal_received == SIGINT) {
-				len = 0;
-				goto done;
-			}
+		FD_ZERO (&rset);
+		FD_SET (0, &rset);
+		FD_SET (dd, &rset);
 
-			if (errno == EAGAIN || errno == EINTR) {
-				printf ("looping\n");
-				continue;
-			}
-			goto done;
+		if (select (dd + 1, &rset, NULL, NULL, NULL) < 0) {
+			perror ("select");
+			exit (1);
 		}
 
-//		dump (buf, len);
-		
-		ptr = buf + (1 + HCI_EVENT_HDR_SIZE);
-		len -= (1 + HCI_EVENT_HDR_SIZE);
+		if (FD_ISSET (dd, &rset)) {
+			process_input (dd);
+		}
 
-		meta = (void *) ptr;
-
-		if (meta->subevent != 0x02)
-			goto done;
-
-		/* Ignoring multiple reports */
-		info = (le_advertising_info *) (meta->data + 1);
-		if (1) {
-			char name[30];
-
-			memset(name, 0, sizeof(name));
-
-			ba2str(&info->bdaddr, addr);
-			eir_parse_name(info->data, info->length,
-							name, sizeof(name) - 1);
-
-			printf("x %s %s\n", addr, name);
+		if (FD_ISSET (0, &rset)) {
+			if (process_stdin () == 0)
+				break;
 		}
 	}
 
-done:
+	hci_le_set_scan_enable (dd, 0, filter_dup, 10000);
+
 	return 0;
 }
 
