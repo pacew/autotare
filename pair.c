@@ -1,3 +1,4 @@
+/* this started life as the lescan command in bluez/tools/hcitool.c */
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -7,49 +8,8 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
-void
-dump (void *buf, int n)
-{
-	int i;
-	int j;
-	int c;
-
-	for (i = 0; i < n; i += 16) {
-		printf ("%04x: ", i);
-		for (j = 0; j < 16; j++) {
-			if (i+j < n)
-				printf ("%02x ", ((unsigned char *)buf)[i+j]);
-			else
-				printf ("   ");
-		}
-		printf ("  ");
-		for (j = 0; j < 16; j++) {
-			c = ((unsigned char *)buf)[i+j] & 0x7f;
-			if (i+j >= n)
-				putchar (' ');
-			else if (c < ' ' || c == 0x7f)
-				putchar ('.');
-			else
-				putchar (c);
-		}
-		printf ("\n");
-
-	}
-}
-
-
-
-#define EIR_FLAGS                   0x01  /* flags */
-#define EIR_UUID16_SOME             0x02  /* 16-bit UUID, more available */
-#define EIR_UUID16_ALL              0x03  /* 16-bit UUID, all listed */
-#define EIR_UUID32_SOME             0x04  /* 32-bit UUID, more available */
-#define EIR_UUID32_ALL              0x05  /* 32-bit UUID, all listed */
-#define EIR_UUID128_SOME            0x06  /* 128-bit UUID, more available */
-#define EIR_UUID128_ALL             0x07  /* 128-bit UUID, all listed */
 #define EIR_NAME_SHORT              0x08  /* shortened local name */
 #define EIR_NAME_COMPLETE           0x09  /* complete local name */
-#define EIR_TX_POWER                0x0A  /* transmit power level */
-#define EIR_DEVICE_ID               0x10  /* device ID */
 
 static void 
 extract_name (uint8_t *eir_base, size_t eir_len,
