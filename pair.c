@@ -12,7 +12,56 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
+enum dev_state {
+	S_UNUSED,
+	S_CONNECTING,
+	S_CONNECTED,
+	S_ERROR,
+};
+
+struct dev {
+	struct dev *next;
+	enum dev_state state;
+	bdaddr_t bdaddr;
+	char addrstr[100];
+	int sock;
+};
+
+struct dev *devs;
+
+struct dev *
+find_dev (bdaddr_t *addrp)
+{
+	struct dev *dp;
+	for (dp = devs; dp; dp = dp->next) {
+		if (memcmp (&dp->bdaddr, addrp, sizeof dp->bdaddr) == 0)
+			return (dp);
+	}
+	return (NULL);
+}
+
+struct dev *
+create_dev (bdaddr_t *addrp)
+{
+	struct dev *dp;
+	if ((dp = calloc (1, sizeof *dp)) == NULL) {
+		fprintf (stderr, "out of memory\n");
+		exit (1);
+	}
+
+	dp->bdaddr = *addrp;
+	ba2str (addrp, dp->addrstr);
+
+	dp->next = devs;
+	devs = dp;
+
+	return (dp);
+}
+
+
 int vflag;
+int scan_sock;
+int query_sock;
 
 #define ATT_CID 4
 
@@ -25,7 +74,7 @@ enum {
 void
 usage (void)
 {
-	fprintf (stderr, "usage: bt\n");
+	fprintf (stderr, "usage: pair\n");
 	exit (1);
 }
 
@@ -44,15 +93,14 @@ get_secs (void)
 	return (now - start);
 }
 
-int
-connect_bluetooth (void)
+void
+connect_dev (struct dev *dp)
 {
 	struct sockaddr_l2 src_addr;
 	struct sockaddr_l2 dst_addr;
 
-	int sock = -1;
-	
-	if ((sock = socket (PF_BLUETOOTH, SOCK_SEQPACKET, BTPROTO_L2CAP)) < 0) {
+	if ((dp->sock = socket (PF_BLUETOOTH, SOCK_SEQPACKET, 
+				  BTPROTO_L2CAP)) < 0) {
 		perror ("socket bt");
 		goto bad;
 	}
@@ -64,7 +112,7 @@ connect_bluetooth (void)
 	src_addr.l2_cid = htobs (ATT_CID);
 	src_addr.l2_bdaddr_type = BDADDR_BREDR;
 
-	if (bind (sock, (struct sockaddr *)&src_addr, sizeof src_addr) < 0) {
+	if (bind (dp->sock, (struct sockaddr *)&src_addr,sizeof src_addr)<0){
 		perror ("bind");
 		goto bad;
 	}
@@ -72,88 +120,86 @@ connect_bluetooth (void)
 	struct bt_security sec;
 	memset (&sec, 0, sizeof sec);
 	sec.level = BT_SECURITY_LOW;
-	if (setsockopt (sock, SOL_BLUETOOTH, BT_SECURITY, 
+	if (setsockopt (dp->sock, SOL_BLUETOOTH, BT_SECURITY, 
 			&sec, sizeof sec) < 0) {
 		/* btio.c allows ENOPROTOOPT and does other stuff */
 		perror ("setsockopt BT_SECURITY");
 		goto bad;
 	}
 
-	if (fcntl (sock, F_SETFL, O_NONBLOCK) < 0) {
+	if (fcntl (dp->sock, F_SETFL, O_NONBLOCK) < 0) {
 		perror ("fcntl NONBLOCK");
 		goto bad;
 	}
 
 	memset (&dst_addr, 0, sizeof dst_addr);
 	dst_addr.l2_family = AF_BLUETOOTH;
-	str2ba("DC:99:65:B8:F1:F6", &dst_addr.l2_bdaddr);
+	dst_addr.l2_bdaddr = dp->bdaddr;
 	dst_addr.l2_cid = htobs (ATT_CID);
 	dst_addr.l2_bdaddr_type = BDADDR_LE_RANDOM;
 
-	printf ("%.3f connecting...\n", get_secs());
+	printf ("%.3f connecting to %s\n", get_secs(), dp->addrstr);
 
-	if (connect (sock, (struct sockaddr*)&dst_addr, sizeof dst_addr) < 0) {
+	if (connect (dp->sock, 
+		     (struct sockaddr*)&dst_addr, 
+		     sizeof dst_addr) < 0) {
 		if (errno != EAGAIN && errno != EINPROGRESS) {
 			perror ("connect");
 			goto bad;
 		}
 	}
 
-	printf ("%.3f waiting\n", get_secs ());
-	fd_set wset;
-	FD_ZERO (&wset);
-	FD_SET (sock, &wset);
-	struct timeval tv;
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-	
-	if (select (sock + 1, NULL, &wset, NULL, &tv) < 0) {
-		perror ("select for connect");
-		goto bad;
-	}
-
-	if (! FD_ISSET (sock, &wset)) {
-		printf ("socket didn't become writable\n");
-		goto bad;
-	}
-
-	printf ("%.3f connected\n", get_secs ());
-
-	int sk_err;
-	socklen_t sk_err_len = sizeof sk_err;
-	if (getsockopt (sock, SOL_SOCKET, SO_ERROR,
-			&sk_err, &sk_err_len) < 0) {
-		perror ("getsockopt SO_ERROR");
-		goto bad;
-	}
-	if (sk_err != 0) {
-		printf ("connect error %s\n", strerror (sk_err));
-		goto bad;
-	}
-
-	return (sock);
+	dp->state = S_CONNECTING;
+	return;
 
 bad:
-	if (sock >= 0)
-		close (sock);
-	return (-1);
+	dp->state = S_ERROR;
+	if (dp->sock > 0)
+		close (dp->sock);
+	dp->sock = 0;
 }
 
 void
-await_readable (int sock)
+send_to_uart (struct dev *dp, char *buf, int len)
 {
-	fd_set rset;
+	uint8_t pdu[100];
+	int idx;
+	int handle = 0x13;
+	int n;
+	
+	idx = 0;
+	pdu[idx++] = ATT_OP_WRITE_REQ;
+	pdu[idx++] = handle;
+	pdu[idx++] = handle >> 8;
+	memcpy (pdu + idx, buf, len);
+	idx += len;
 
-	while (1) {
-		FD_ZERO (&rset);
-		FD_SET (sock, &rset);
-		if (select (sock + 1, &rset, NULL, NULL, NULL) < 0) {
-			perror ("select");
-			exit (1);
-		}
-		if (FD_ISSET (sock, &rset))
-			break;
+	if ((n = write (dp->sock, pdu, idx)) < 0) {
+		printf ("sock %d\n", dp->sock);
+		perror ("write uart");
+	} else if (n != idx) {
+		printf ("only wrote %d of %d\n", n, idx);
 	}
+}
+
+void
+handle_connected (struct dev *dp)
+{
+	printf ("%s connected\n", dp->addrstr);
+	dp->state = S_CONNECTED;
+	
+	int sk_err;
+	socklen_t sk_err_len = sizeof sk_err;
+	if (getsockopt (scan_sock, SOL_SOCKET, SO_ERROR,
+			&sk_err, &sk_err_len) < 0) {
+		sk_err = errno;
+	}
+	if (sk_err != 0) {
+		printf ("%s: connect error %s\n", 
+			dp->addrstr, strerror (sk_err));
+	}
+
+	send_to_uart (dp, "f\n", 2);
 }
 
 int pflag;
@@ -233,6 +279,7 @@ process_info (le_advertising_info *info)
 	char uuid_str[100];
 	uint8_t uuid16[2];
 	char uuid16_str[100];
+	struct dev *dp;
 
 	name[0] = 0;
 	eir_flags = 0;
@@ -298,9 +345,11 @@ process_info (le_advertising_info *info)
 			eir_togo -= field_len;
 			break;
 		default:
-			printf ("unknown eir op 0x%x %d\n", 
-				eir_op, field_len);
-			dump (eir, field_len);
+			if (vflag) {
+				printf ("unknown eir op 0x%x %d\n", 
+					eir_op, field_len);
+				dump (eir, field_len);
+			}
 			break;
 		}
 
@@ -310,131 +359,88 @@ done:
 	uuid_to_str (uuid, uuid_str);
 	sprintf (uuid16_str, "%02x%02x", uuid16[0], uuid16[1]);
 	
-	printf ("%-20s %-20s %-4s 0x%02x %s\n", 
-		addrstr, uuid_str, uuid16_str, eir_flags, name);
+	if ((dp = find_dev (&info->bdaddr)) == NULL) {
+		printf ("%-20s %-20s %-4s 0x%02x %s\n", 
+			addrstr, uuid_str, uuid16_str, eir_flags, name);
+		dp = create_dev (&info->bdaddr);
+		if (strcmp (addrstr, "DC:99:65:B8:F1:F6") == 0)
+			connect_dev (dp);
+	}
+}
+
+
+void
+process_meta (void *pdata, int togo)
+{
+	evt_le_meta_event *meta = pdata;
+	le_advertising_info *info;
+
+	switch (meta->subevent) {
+	case EVT_LE_ADVERTISING_REPORT:
+		/* why +1? */
+		info = (void *)meta->data + 1;
+		process_info (info);
+		break;
+	default:
+		printf ("unknown subevent 0x%x\n",
+			meta->subevent);
+		dump (pdata, togo);
+		break;
+	}
 }
 
 void
-do_pair (void)
+process_scan_result (void)
 {
-	int dev_id, sock;
-	double start;
-
-	if ((dev_id = hci_get_route(NULL)) < 0) {
-		printf ("hci_get_route failed\n");
-		exit (1);
-	}
-	
-	if ((sock = hci_open_dev( dev_id )) < 0) {
-		perror("hci_open_dev");
-		exit(1);
-	}
-
-	uint8_t filter_dup = 0x01;
-	hci_le_set_scan_enable(sock, 0x00, filter_dup, 10000);
-
-	uint8_t scan_type = 0; /* 1=active, 0=passive */
-	uint16_t interval = htobs(0x0010);
-	uint16_t window = htobs (0x0010);
-	uint8_t own_type = LE_PUBLIC_ADDRESS;
-	uint8_t filter_policy = 0;
-
-	if (hci_le_set_scan_parameters(sock, scan_type, interval, window,
-				       own_type, filter_policy, 10000) < 0) {
-		perror("hci_le_set_scan_parameters");
-		exit(1);
-	}
-
-
-	if (hci_le_set_scan_enable(sock, 0x01, filter_dup, 10000) < 0) {
-		perror("Enable scan failed");
-		exit(1);
-	}
-
-	unsigned char buf[HCI_MAX_EVENT_SIZE];
-	struct hci_filter nf, of;
-	socklen_t olen;
 	int len;
-
-	olen = sizeof(of);
-	if (getsockopt(sock, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
-		perror("HCI_FILTER");
+	unsigned char buf[HCI_MAX_EVENT_SIZE];
+	
+	if ((len = read(scan_sock, buf, sizeof buf)) < 0) {
+		perror ("read");
 		exit (1);
 	}
 
-	hci_filter_clear(&nf);
-	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
-	hci_filter_set_event(EVT_LE_META_EVENT, &nf);
+	if (vflag)
+		dump (buf, len);
 
-	if (setsockopt(sock, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
-		perror ("HCI_FILTER2\n");
-		exit (1);
+	uint8_t *pdata = buf;
+	int togo = len;
+
+	if (togo == 0) {
+		printf ("runt\n");
+		return;
 	}
 
-	start = get_secs ();
-	while (get_secs () - start < 2) {
-		await_readable (sock);
-		
-		if ((len = read(sock, buf, sizeof buf)) < 0) {
-			perror ("read");
-			exit (1);
-		}
+	int hci_packet_type = *pdata++;
+	togo--;
 
-		if (vflag)
-			dump (buf, len);
-
-		uint8_t *pdata = buf;
-		int togo = len;
-
-		if (togo <= 0) {
-			printf ("runt\n");
-			continue;
-		}
-
-		int hci_packet_type = *pdata++;
-		togo--;
-
-		if (hci_packet_type != HCI_EVENT_PKT) {
-			printf ("unknown hci_packet_type %d\n",
-				hci_packet_type);
-			continue;
-		}
-
-		if (togo < HCI_EVENT_HDR_SIZE) {
-			printf ("hci event hdr runt\n");
-			continue;
-		}
-		hci_event_hdr *evhdr = (void *)pdata;
-		pdata += HCI_EVENT_HDR_SIZE;
-		togo -= HCI_EVENT_HDR_SIZE;
-
-		if (evhdr->plen > togo) {
-			printf ("evhdr overflow\n");
-			continue;
-		}
-
-		
-		if (evhdr->evt == EVT_LE_META_EVENT) {
-			evt_le_meta_event *meta = (void *)pdata;
-
-			if (meta->subevent == EVT_LE_ADVERTISING_REPORT) {
-				le_advertising_info *info;
-				
-				/* why +1? */
-				info = (void *)meta->data + 1;
-				process_info (info);
-			} else {
-				printf ("unknown subevent 0x%x\n",
-					meta->subevent);
-			}
-		} else {
-			printf ("unknown event 0x%x\n", evhdr->evt);
-		}
+	if (hci_packet_type != HCI_EVENT_PKT) {
+		printf ("unknown hci_packet_type %d\n",
+			hci_packet_type);
+		return;
 	}
 
-	if (hci_le_set_scan_enable(sock, 0x00, filter_dup, 10000) < 0) {
-		perror("Disable scan failed");
-		exit(1);
+	if (togo < HCI_EVENT_HDR_SIZE) {
+		printf ("hci event hdr runt\n");
+		return;
+	}
+
+	hci_event_hdr *evhdr = (void *)pdata;
+	pdata += HCI_EVENT_HDR_SIZE;
+	togo -= HCI_EVENT_HDR_SIZE;
+
+	if (evhdr->plen > togo) {
+		printf ("evhdr overflow\n");
+		return;
+	}
+		
+	switch (evhdr->evt) {
+	case EVT_LE_META_EVENT:
+		process_meta (pdata, togo);
+		break;
+	default:
+		printf ("unknown event 0x%x\n", evhdr->evt);
+		break;
 	}
 }
 
@@ -442,57 +448,100 @@ int
 main (int argc, char **argv)
 {
 	int c;
-	int sock;
+	int dev_id;
+	struct dev *dp;
 
-
-	while ((c = getopt (argc, argv, "p")) != EOF) {
+	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
-		case 'p':
-			pflag = 1;
-			break;
 		default:
 			usage ();
 		}
 	}
 
-	if (pflag) {
-		do_pair ();
-		exit (0);
-	}
-
-	if ((sock = connect_bluetooth ()) < 0)
-		exit (1);
-	
-	if (fcntl (sock, F_SETFL, 0) < 0) {
-		perror ("fcntl turn off NONBLOCK");
+	if ((dev_id = hci_get_route (NULL)) < 0) {
+		printf ("hci_get_route failed\n");
 		exit (1);
 	}
+	
+	if ((scan_sock = hci_open_dev (dev_id)) < 0) {
+		perror("hci_open_dev");
+		exit(1);
+	}
 
-	uint8_t pdu[100];
-	int pdu_len;
-	int handle = 0x13;
-	char msg[2] = "f\n";
-	
-	pdu[0] = ATT_OP_WRITE_REQ;
-	pdu[1] = handle;
-	pdu[2] = handle >> 8;
-	memcpy (pdu + 3, msg, sizeof msg);
-	pdu_len = 3 + sizeof msg;
-	
-	printf ("%.3f writing\n", get_secs ());
-	if (write (sock, pdu, pdu_len) < 0) {
-		perror ("write");
+	uint8_t filter_dup = 1;
+
+	/* make sure scanning is disabled */
+	hci_le_set_scan_enable(scan_sock, 0, filter_dup, 10000);
+
+	uint8_t scan_type = 0; /* 1=active, 0=passive */
+	uint16_t interval = htobs(0x0010);
+	uint16_t window = htobs (0x0010);
+	uint8_t own_type = LE_PUBLIC_ADDRESS;
+	uint8_t filter_policy = 0;
+	if (hci_le_set_scan_parameters(scan_sock, scan_type, interval, window,
+				       own_type, filter_policy, 10000) < 0) {
+		perror("hci_le_set_scan_parameters");
+		exit(1);
+	}
+
+	/* enable scanning */
+	if (hci_le_set_scan_enable(scan_sock, 1, filter_dup, 10000) < 0) {
+		perror("Enable scan failed");
+		exit(1);
+	}
+
+	struct hci_filter nf;
+
+	hci_filter_clear(&nf);
+	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
+	hci_filter_set_event(EVT_LE_META_EVENT, &nf);
+	if (setsockopt(scan_sock, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
+		perror ("HCI_FILTER2\n");
 		exit (1);
 	}
 
 	while (1) {
-		char rbuf[100];
-		int rlen;
-		printf ("%.3f reading\n", get_secs ());
-	
-		rlen = read (sock, rbuf, sizeof rbuf);
-		printf ("%.3f got %d %x\n", get_secs (), rlen, rbuf[0]);
+		fd_set rset, wset;
+		int maxfd;
+
+		FD_ZERO (&rset);
+		FD_ZERO (&wset);
+		FD_SET (0, &rset);
+		maxfd = 0;
+
+		FD_SET (scan_sock, &rset);
+		if (scan_sock > maxfd)
+			maxfd = scan_sock;
+		
+		for (dp = devs; dp; dp = dp->next) {
+			if (dp->state == S_CONNECTING) {
+				FD_SET (dp->sock, &wset);
+				if (dp->sock > maxfd)
+					maxfd = dp->sock;
+			}
+		}
+
+		if (select (maxfd + 1, &rset, &wset, NULL, NULL) < 0) {
+			perror ("select");
+			exit (1);
+		}
+
+		if (FD_ISSET (scan_sock, &rset)) {
+			process_scan_result ();
+		}
+		for (dp = devs; dp; dp = dp->next) {
+			if (dp->state == S_CONNECTING 
+			    && FD_ISSET (dp->sock, &wset)) {
+				handle_connected (dp);
+			}
+		}
 	}
+
+	if (hci_le_set_scan_enable(scan_sock, 0x00, filter_dup, 10000) < 0) {
+		perror("Disable scan failed");
+		exit(1);
+	}
+
 
 	return (0);
 }
