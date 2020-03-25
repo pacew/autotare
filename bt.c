@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <time.h>
+#include <ctype.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 
@@ -45,7 +46,7 @@ get_secs (void)
 }
 
 int
-connect_bluetooth (void)
+connect_bluetooth (bdaddr_t *dest_addr)
 {
 	struct sockaddr_l2 src_addr;
 	struct sockaddr_l2 dst_addr;
@@ -86,7 +87,7 @@ connect_bluetooth (void)
 
 	memset (&dst_addr, 0, sizeof dst_addr);
 	dst_addr.l2_family = AF_BLUETOOTH;
-	str2ba("DC:99:65:B8:F1:F6", &dst_addr.l2_bdaddr);
+	dst_addr.l2_bdaddr = *dest_addr;
 	dst_addr.l2_cid = htobs (ATT_CID);
 	dst_addr.l2_bdaddr_type = BDADDR_LE_RANDOM;
 
@@ -156,311 +157,46 @@ await_readable (int sock)
 	}
 }
 
-int pflag;
 
-/* from hcitool.c */
-/* Extended Inquiry Response */
-#define EIR_FLAGS                   0x01  /* flags */
-#define EIR_UUID16_SOME             0x02  /* 16-bit UUID, more available */
-#define EIR_UUID16_ALL              0x03  /* 16-bit UUID, all listed */
-#define EIR_UUID32_SOME             0x04  /* 32-bit UUID, more available */
-#define EIR_UUID32_ALL              0x05  /* 32-bit UUID, all listed */
-#define EIR_UUID128_SOME            0x06  /* 128-bit UUID, more available */
-#define EIR_UUID128_ALL             0x07  /* 128-bit UUID, all listed */
-#define EIR_NAME_SHORT              0x08  /* shortened local name */
-#define EIR_NAME_COMPLETE           0x09  /* complete local name */
-#define EIR_TX_POWER                0x0A  /* transmit power level */
-#define EIR_DEVICE_ID               0x10  /* device ID */
-
-
-void
-dump (void *buf, int n)
-{
-	int i;
-	int j;
-	int c;
-
-	for (i = 0; i < n; i += 16) {
-		printf ("%04x: ", i);
-		for (j = 0; j < 16; j++) {
-			if (i+j < n)
-				printf ("%02x ", ((unsigned char *)buf)[i+j]);
-			else
-				printf ("   ");
-		}
-		printf ("  ");
-		for (j = 0; j < 16; j++) {
-			c = ((unsigned char *)buf)[i+j] & 0x7f;
-			if (i+j >= n)
-				putchar (' ');
-			else if (c < ' ' || c == 0x7f)
-				putchar ('.');
-			else
-				putchar (c);
-		}
-		printf ("\n");
-
-	}
-}
-
-void
-uuid_to_str (void *arg, char *buf)
-{
-	uint8_t *p = arg;
-	int i;
-	char *outp;
-
-	outp = buf;
-	for (i = 0; i < 16; i++) {
-		if (i == 4 || i == 6 || i == 8 || i == 10)
-			*outp++ = '-';
-		outp += sprintf (outp, "%02x", p[i]);
-	}
-	*outp = 0;
-}
-
-void
-process_info (le_advertising_info *info)
-{
-	char addrstr[100];
-	uint8_t *eir;
-	int eir_togo;
-	int eir_op;
-	int eir_flags;
-	char name[100];
-	int name_len;
-	uint8_t uuid[16];
-	char uuid_str[100];
-	uint8_t uuid16[2];
-	char uuid16_str[100];
-
-	name[0] = 0;
-	eir_flags = 0;
-	memset (uuid, 0, sizeof uuid);
-	memset (uuid16, 0, sizeof uuid16);
-
-	eir = info->data;
-	eir_togo = info->length;
-	
-	if (vflag) {
-		printf ("eir\n");
-		dump (eir, eir_togo);
-	}
-
-	while (eir_togo > 0) {
-		uint8_t field_len;
-
-		field_len = *eir++;
-		eir_togo--;
-		
-		if (field_len < 1 || field_len > eir_togo)
-			break;
-		
-		eir_op = *eir++;
-		eir_togo--;
-		field_len--;
-		
-		switch (eir_op) {
-		case EIR_FLAGS:
-			if (eir_togo < 1)
-				goto done;
-			eir_flags = *eir++;
-			eir_togo--;
-			break;
-	
-		case EIR_NAME_SHORT:
-		case EIR_NAME_COMPLETE:
-			if (eir_togo < field_len)
-				goto done;
-			name_len = field_len;
-			if (name_len > sizeof name - 1)
-				name_len = sizeof name - 1;
-			memcpy (name, eir, name_len);
-			name[name_len] = 0;
-			eir += field_len;
-			eir_togo -= field_len;
-			break;
-		case EIR_UUID16_SOME:
-		case EIR_UUID16_ALL:
-			if (field_len < 2 || eir_togo < field_len)
-				goto done;
-
-			memcpy (uuid16, eir, sizeof uuid16);
-			eir += field_len;
-			eir_togo -= field_len;
-			break;
-		case EIR_UUID128_SOME:
-		case EIR_UUID128_ALL:
-			if (field_len != 16 || eir_togo < field_len)
-				goto done;
-			memcpy (uuid, eir, sizeof uuid);
-			eir += field_len;
-			eir_togo -= field_len;
-			break;
-		default:
-			printf ("unknown eir op 0x%x %d\n", 
-				eir_op, field_len);
-			dump (eir, field_len);
-			break;
-		}
-
-	}
-done:
-	ba2str (&info->bdaddr, addrstr);
-	uuid_to_str (uuid, uuid_str);
-	sprintf (uuid16_str, "%02x%02x", uuid16[0], uuid16[1]);
-	
-	printf ("%-20s %-20s %-4s 0x%02x %s\n", 
-		addrstr, uuid_str, uuid16_str, eir_flags, name);
-}
-
-void
-do_pair (void)
-{
-	int dev_id, sock;
-	double start;
-
-	if ((dev_id = hci_get_route(NULL)) < 0) {
-		printf ("hci_get_route failed\n");
-		exit (1);
-	}
-	
-	if ((sock = hci_open_dev( dev_id )) < 0) {
-		perror("hci_open_dev");
-		exit(1);
-	}
-
-	uint8_t filter_dup = 0x01;
-	hci_le_set_scan_enable(sock, 0x00, filter_dup, 10000);
-
-	uint8_t scan_type = 1; /* 1=active, 0=passive */
-	uint16_t interval = htobs(0x0010);
-	uint16_t window = htobs (0x0010);
-	uint8_t own_type = LE_PUBLIC_ADDRESS;
-	uint8_t filter_policy = 0;
-
-	if (hci_le_set_scan_parameters(sock, scan_type, interval, window,
-				       own_type, filter_policy, 10000) < 0) {
-		perror("hci_le_set_scan_parameters");
-		exit(1);
-	}
-
-
-	if (hci_le_set_scan_enable(sock, 0x01, filter_dup, 10000) < 0) {
-		perror("Enable scan failed");
-		exit(1);
-	}
-
-	unsigned char buf[HCI_MAX_EVENT_SIZE];
-	struct hci_filter nf, of;
-	socklen_t olen;
-	int len;
-
-	olen = sizeof(of);
-	if (getsockopt(sock, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
-		perror("HCI_FILTER");
-		exit (1);
-	}
-
-	hci_filter_clear(&nf);
-	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
-	hci_filter_set_event(EVT_LE_META_EVENT, &nf);
-
-	if (setsockopt(sock, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
-		perror ("HCI_FILTER2\n");
-		exit (1);
-	}
-
-	start = get_secs ();
-	while (get_secs () - start < 2) {
-		await_readable (sock);
-		
-		if ((len = read(sock, buf, sizeof buf)) < 0) {
-			perror ("read");
-			exit (1);
-		}
-
-		if (vflag)
-			dump (buf, len);
-
-		uint8_t *pdata = buf;
-		int togo = len;
-
-		if (togo <= 0) {
-			printf ("runt\n");
-			continue;
-		}
-
-		int hci_packet_type = *pdata++;
-		togo--;
-
-		if (hci_packet_type != HCI_EVENT_PKT) {
-			printf ("unknown hci_packet_type %d\n",
-				hci_packet_type);
-			continue;
-		}
-
-		if (togo < HCI_EVENT_HDR_SIZE) {
-			printf ("hci event hdr runt\n");
-			continue;
-		}
-		hci_event_hdr *evhdr = (void *)pdata;
-		pdata += HCI_EVENT_HDR_SIZE;
-		togo -= HCI_EVENT_HDR_SIZE;
-
-		if (evhdr->plen > togo) {
-			printf ("evhdr overflow\n");
-			continue;
-		}
-
-		
-		if (evhdr->evt == EVT_LE_META_EVENT) {
-			evt_le_meta_event *meta = (void *)pdata;
-
-			if (meta->subevent == EVT_LE_ADVERTISING_REPORT) {
-				le_advertising_info *info;
-				
-				/* why +1? */
-				info = (void *)meta->data + 1;
-				process_info (info);
-			} else {
-				printf ("unknown subevent 0x%x\n",
-					meta->subevent);
-			}
-		} else {
-			printf ("unknown event 0x%x\n", evhdr->evt);
-		}
-	}
-
-	if (hci_le_set_scan_enable(sock, 0x00, filter_dup, 10000) < 0) {
-		perror("Disable scan failed");
-		exit(1);
-	}
-}
 
 int
 main (int argc, char **argv)
 {
 	int c;
 	int sock;
+	char *fname;
+	FILE *inf;
+	char addrstr[100];
+	bdaddr_t bdaddr;
+	int n;
 
-
-	while ((c = getopt (argc, argv, "p")) != EOF) {
+	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
-		case 'p':
-			pflag = 1;
-			break;
 		default:
 			usage ();
 		}
 	}
 
-	if (pflag) {
-		do_pair ();
-		exit (0);
+	fname = ".bluetooth_addr";
+	if ((inf = fopen (fname, "r")) == NULL) {
+		fprintf (stderr, "can't open %s - maybe run ./pair?\n", fname);
+		exit (1);
+	}
+	if (fgets (addrstr, sizeof addrstr, inf) == NULL) {
+		fprintf (stderr, "can't read %s\n", fname);
+		exit (1);
+	}
+	n = strlen (addrstr);
+	while (n > 0 && isspace (addrstr[n-1]))
+		addrstr[--n] = 0;
+	
+	if (str2ba(addrstr, &bdaddr) < 0) {
+		fprintf (stderr, "can't parse address %s from %s\n",
+			 addrstr, fname);
+		exit (1);
 	}
 
-	if ((sock = connect_bluetooth ()) < 0)
+	if ((sock = connect_bluetooth (&bdaddr)) < 0)
 		exit (1);
 	
 	if (fcntl (sock, F_SETFL, 0) < 0) {
