@@ -171,8 +171,10 @@ main(int argc, char **argv)
 				goto done;
 			}
 
-			if (errno == EAGAIN || errno == EINTR)
+			if (errno == EAGAIN || errno == EINTR) {
+				printf ("looping\n");
 				continue;
+			}
 			goto done;
 		}
 
