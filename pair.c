@@ -7,6 +7,35 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
+void
+dump (void *buf, int n)
+{
+	int i;
+	int j;
+	int c;
+
+	for (i = 0; i < n; i += 16) {
+		printf ("%04x: ", i);
+		for (j = 0; j < 16; j++) {
+			if (i+j < n)
+				printf ("%02x ", ((unsigned char *)buf)[i+j]);
+			else
+				printf ("   ");
+		}
+		printf ("  ");
+		for (j = 0; j < 16; j++) {
+			c = ((unsigned char *)buf)[i+j] & 0x7f;
+			if (i+j >= n)
+				putchar (' ');
+			else if (c < ' ' || c == 0x7f)
+				putchar ('.');
+			else
+				putchar (c);
+		}
+		printf ("\n");
+
+	}
+}
 
 
 
@@ -22,40 +51,52 @@
 #define EIR_TX_POWER                0x0A  /* transmit power level */
 #define EIR_DEVICE_ID               0x10  /* device ID */
 
-static void eir_parse_name(uint8_t *eir, size_t eir_len,
-						char *buf, size_t buf_len)
+static void 
+extract_name (uint8_t *eir_base, size_t eir_len,
+	      char *name, size_t name_len)
 {
-	size_t offset;
+	uint8_t *eir, *field_ptr;
+	size_t togo, field_togo;
+	uint8_t field_len;
+	int field_op;
+	int n;
+	
+	name[0] = 0;
 
-	offset = 0;
-	while (offset < eir_len) {
-		uint8_t field_len = eir[0];
-		size_t name_len;
+	eir = eir_base;
+	togo = eir_len;
 
-		/* Check for the end of EIR */
-		if (field_len == 0)
+	while (togo > 0) {
+		if ((field_len = *eir++) == 0)
+			break;
+		togo--;
+		
+		if (field_len > togo)
 			break;
 
-		if (offset + field_len > eir_len)
-			goto failed;
+		field_ptr = eir;
+		field_togo = field_len;
 
-		switch (eir[1]) {
+		field_op = *field_ptr++;
+		field_togo--;
+
+		switch (field_op) {
 		case EIR_NAME_SHORT:
 		case EIR_NAME_COMPLETE:
-			name_len = field_len - 1;
-			if (name_len > buf_len)
-				goto failed;
-
-			memcpy(buf, &eir[2], name_len);
-			return;
+			n = field_togo;
+			if (n > name_len - 1)
+				n = name_len - 1;
+			memcpy(name, field_ptr, n);
+			name[n] = 0;
+			goto done;
 		}
 
-		offset += field_len + 1;
-		eir += field_len + 1;
+		eir += field_len;
+		togo -= field_len;
 	}
 
-failed:
-	buf[0] = 0;
+done:
+	return;
 }
 
 struct dev {
@@ -108,37 +149,76 @@ add_device (char *addr, char *name)
 
 
 void
+process_info (le_advertising_info *info, int togo)
+{
+	char name[30];
+	char addr[100];
+
+	ba2str (&info->bdaddr, addr);
+
+	if (LE_ADVERTISING_INFO_SIZE + info->length > togo) {
+		printf ("invalid le_advertising_info->length\n");
+		return;
+	}
+		
+	extract_name (info->data, info->length, name, sizeof name);
+
+	add_device (addr, name);
+}
+
+void
 process_input (int dd)
 {
-	unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
-	int len;
-	
-	if ((len = read(dd, buf, sizeof(buf))) < 0)
-		return;
-	
+	unsigned char buf[HCI_MAX_EVENT_SIZE];
+	int togo;
+	unsigned char *pdata;
+	int hci_packet_type;
 	evt_le_meta_event *meta;
 	le_advertising_info *info;
-	char addr[18];
-
-	ptr = buf + (1 + HCI_EVENT_HDR_SIZE);
-	len -= (1 + HCI_EVENT_HDR_SIZE);
-
-	meta = (void *) ptr;
-
-	if (meta->subevent != 0x02)
-		return;
-
-	info = (le_advertising_info *) (meta->data + 1);
-
-	char name[30];
-
-	memset(name, 0, sizeof(name));
-
-	ba2str(&info->bdaddr, addr);
-	eir_parse_name(info->data, info->length,
-		       name, sizeof(name) - 1);
 	
-	add_device (addr, name);
+	if ((togo = read(dd, buf, sizeof(buf))) < 0)
+		return;
+	pdata = buf;
+
+	if (togo == 0) {
+		printf ("runt\n");
+		return;
+	}
+
+	hci_packet_type = *pdata++;
+	togo--;
+
+	if (hci_packet_type == HCI_EVENT_PKT) {
+		if (togo < HCI_EVENT_HDR_SIZE) {
+			printf ("runt HCI_EVENT_PKT\n");
+			return;
+		}
+		pdata += HCI_EVENT_HDR_SIZE;
+		togo -= HCI_EVENT_HDR_SIZE;
+
+		meta = (evt_le_meta_event *)pdata;
+
+		if (togo < EVT_LE_META_EVENT_SIZE) {
+			printf ("runt evt_le_meta_event\n");
+			return;
+		}
+
+		pdata += EVT_LE_META_EVENT_SIZE;
+		togo -= EVT_LE_META_EVENT_SIZE;
+
+		if (meta->subevent == EVT_LE_ADVERTISING_REPORT) {
+			/* don't know why we need to discard the first byte */
+			pdata++;
+			togo--;
+			
+			if (togo < LE_ADVERTISING_INFO_SIZE) {
+				printf ("runt le_advertising_info\n");
+				return;
+			}
+			info = (le_advertising_info *)pdata;
+			process_info (info, togo);
+		}
+	}
 }
 
 char *outname;
