@@ -8,6 +8,8 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
+int vflag;
+
 #define EIR_NAME_SHORT              0x08  /* shortened local name */
 #define EIR_NAME_COMPLETE           0x09  /* complete local name */
 
@@ -86,6 +88,7 @@ void
 add_device (char *addr, char *name)
 {
 	struct dev *dp;
+	int print_flag;
 
 	for (dp = devs; dp; dp = dp->next) {
 		if (strcmp (dp->addr, addr) == 0
@@ -94,6 +97,8 @@ add_device (char *addr, char *name)
 		}
 	}
 	
+	print_flag = 0;
+
 	if (dp == NULL) {
 		dp = calloc (1, sizeof *dp);
 		dp->devnum = ++last_devnum;
@@ -102,9 +107,17 @@ add_device (char *addr, char *name)
 		dp->next = devs;
 		devs = dp;
 
+		print_flag = 1;
+	}
+
+	if (vflag && dp->name[0])
+		print_flag = 1;
+	
+	if (print_flag) {
 		printf ("%-2d %-30.30s %-20s\n",
 			dp->devnum, dp->name, dp->addr);
 	}
+
 }
 
 
@@ -226,8 +239,11 @@ main (int argc, char **argv)
 
 	outname = ".bluetooth_addr";
 	
-	while ((c = getopt (argc, argv, "o:")) != EOF) {
+	while ((c = getopt (argc, argv, "vo:")) != EOF) {
 		switch (c) {
+		case 'v':
+			vflag = 1;
+			break;
 		case 'o':
 			outname = optarg;
 			break;

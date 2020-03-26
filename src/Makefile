@@ -1,5 +1,5 @@
 all:
-	cd ..; make
+	cd ..; make pio
 
 clean:
 	cd ..; make clean

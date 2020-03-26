@@ -1,6 +1,8 @@
 CFLAGS = -g -Wall
 
 all: bt pair desc
+
+pio:
 	platformio run --silent
 
 verbose:
