@@ -6,3 +6,4 @@ bt
 .bluetooth_addr
 pair
 desc
+.pio/

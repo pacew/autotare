@@ -1,3 +1,31 @@
+adafruit-nrfutil --verbose dfu serial -pkg /tmp/arduino_build_447027/Blink.ino.zip -p /dev/ttyACM0 -b 115200 --singlebank 
+
+
+https://github.com/adafruit/Adafruit_nRF52_Bootloader
+
+https://github.com/blueluna/circuit-playground-bluefruit  rust experiment
+
+https://www.adafruit.com/product/4333
+ nRF52840
+https://learn.adafruit.com/adafruit-circuit-playground-bluefruit/arduino-support-setup
+https://learn.adafruit.com/welcome-to-circuitpython/uninstalling-circuitpython
+
+https://github.com/platformio/platformio-core
+https://docs.platformio.org/en/latest/boards/nordicnrf52/adafruit_cplaynrf52840.html
+
+
+boot loaders
+CDC https://en.wikipedia.org/wiki/USB_communications_device_class
+Universal Serial Bus Communication Device Class Abstract Control Model (USB CDC ACM)
+
+Atmel has developed a Flexible in-system programmer (FLIP).
+http://ww1.microchip.com/downloads/en/AppNotes/doc8457.pdf
+
+http://manpages.ubuntu.com/manpages/bionic/man1/dfu-tool.1.html
+https://dfu-programmer.github.io/
+https://ardupilot.org/dev/docs/using-DFU-to-load-bootloader.html
+http://www.gammon.com.au/bootloader
+
 ArduinoBLE
 
 
