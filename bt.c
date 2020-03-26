@@ -13,6 +13,36 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
+void
+dump (void *buf, int n)
+{
+	int i;
+	int j;
+	int c;
+
+	for (i = 0; i < n; i += 16) {
+		printf ("%04x: ", i);
+		for (j = 0; j < 16; j++) {
+			if (i+j < n)
+				printf ("%02x ", ((unsigned char *)buf)[i+j]);
+			else
+				printf ("   ");
+		}
+		printf ("  ");
+		for (j = 0; j < 16; j++) {
+			c = ((unsigned char *)buf)[i+j] & 0x7f;
+			if (i+j >= n)
+				putchar (' ');
+			else if (c < ' ' || c == 0x7f)
+				putchar ('.');
+			else
+				putchar (c);
+		}
+		printf ("\n");
+
+	}
+}
+
 int vflag;
 
 #define ATT_CID 4
@@ -392,30 +422,39 @@ main (int argc, char **argv)
 		exit (1);
 	}
 
-	uint8_t pdu[100];
+	uint8_t pdu_base[100], *pdu;
 	int pdu_len;
 	int handle = 0x13;
-	char msg[2] = "f\n";
+	char msg[50];
+	time_t t;
+	struct tm tm;
+
+	t = time (NULL);
+	tm = *localtime (&t);
+	sprintf (msg, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
 	
-	pdu[0] = ATT_OP_WRITE_REQ;
-	pdu[1] = handle;
-	pdu[2] = handle >> 8;
-	memcpy (pdu + 3, msg, sizeof msg);
-	pdu_len = 3 + sizeof msg;
+	pdu = pdu_base;
+	*pdu++ = ATT_OP_WRITE_REQ;
+	*pdu++ = handle;
+	*pdu++ = handle >> 8;
+	memcpy (pdu, msg, strlen(msg));
+	pdu += strlen(msg);
+	pdu_len = pdu - pdu_base;
 	
 	printf ("%.3f writing\n", get_secs ());
-	if (write (sock, pdu, pdu_len) < 0) {
+	if (write (sock, pdu_base, pdu_len) < 0) {
 		perror ("write");
 		exit (1);
 	}
-
+	
 	while (1) {
 		char rbuf[100];
 		int rlen;
 		printf ("%.3f reading\n", get_secs ());
 	
 		rlen = read (sock, rbuf, sizeof rbuf);
-		printf ("%.3f got %d %x\n", get_secs (), rlen, rbuf[0]);
+		printf ("%.3f received %d\n", get_secs (), rlen);
+		dump (rbuf, rlen);
 	}
 
 	return (0);
