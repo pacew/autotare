@@ -13,6 +13,8 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
+void do_xmit (int sock);
+
 void
 dump (void *buf, int n)
 {
@@ -396,6 +398,8 @@ read_handles (int sock)
 			rx_handle = hp->handle;
 	}
 
+	printf ("tx handle 0x%x; rx 0x%x\n", tx_handle, rx_handle);
+
 	return (0);
 }
 
@@ -422,32 +426,12 @@ main (int argc, char **argv)
 		exit (1);
 	}
 
-	uint8_t pdu_base[100], *pdu;
-	int pdu_len;
-	int handle = 0x13;
-	char msg[50];
-	time_t t;
-	struct tm tm;
+	do_xmit (sock);
+	sleep (3);
+	do_xmit (sock);
 
-	t = time (NULL);
-	tm = *localtime (&t);
-	sprintf (msg, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
-	
-	pdu = pdu_base;
-	*pdu++ = ATT_OP_WRITE_REQ;
-	*pdu++ = handle;
-	*pdu++ = handle >> 8;
-	memcpy (pdu, msg, strlen(msg));
-	pdu += strlen(msg);
-	pdu_len = pdu - pdu_base;
-	
-	printf ("%.3f writing\n", get_secs ());
-	if (write (sock, pdu_base, pdu_len) < 0) {
-		perror ("write");
-		exit (1);
-	}
-	
 	while (1) {
+
 		char rbuf[100];
 		int rlen;
 		printf ("%.3f reading\n", get_secs ());
@@ -461,3 +445,30 @@ main (int argc, char **argv)
 }
 
 				
+void
+do_xmit (int sock)
+{
+	uint8_t pdu_base[100], *pdu;
+	int pdu_len;
+	char msg[50];
+	time_t t;
+	struct tm tm;
+
+	t = time (NULL);
+	tm = *localtime (&t);
+	sprintf (msg, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
+	
+	pdu = pdu_base;
+	*pdu++ = ATT_OP_WRITE_REQ;
+	*pdu++ = tx_handle;
+	*pdu++ = tx_handle >> 8;
+	memcpy (pdu, msg, strlen(msg));
+	pdu += strlen(msg);
+	pdu_len = pdu - pdu_base;
+	
+	printf ("%.3f writing\n", get_secs ());
+	if (write (sock, pdu_base, pdu_len) < 0) {
+		perror ("write");
+		exit (1);
+	}
+}

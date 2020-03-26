@@ -33,6 +33,8 @@ uint8_t beaconUuid[16] =
 // UUID, Major, Minor, RSSI @ 1M
 BLEBeacon beacon(beaconUuid, 0x0000, 0x0000, -54);
 
+BLEUart bleuart;
+
 void setup() 
 {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -54,6 +56,8 @@ void setup()
   // Manufacturer ID is required for Manufacturer Specific Data
   beacon.setManufacturer(MANUFACTURER_ID);
 
+  bleuart.begin();
+
   // Setup the advertising packet
   startAdv();
 
@@ -69,6 +73,8 @@ void startAdv(void)
   // Set the beacon payload using the BLEBeacon class populated
   // earlier in this example
   Bluefruit.Advertising.setBeacon(beacon);
+
+  Bluefruit.Advertising.addService(bleuart);
 
   // Secondary Scan Response packet (optional)
   // Since there is no room for 'Name' in Advertising packet
@@ -99,5 +105,10 @@ void loop()
   else
     digitalWrite(LED_BUILTIN, LOW);
     
-
+  while (bleuart.available()) {
+    int c = bleuart.read();
+    char buf[100];
+    sprintf (buf, "got %c 0x%x", c, c);
+    Serial.println(buf);
+  }
 }
