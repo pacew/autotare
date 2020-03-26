@@ -1,9 +1,13 @@
 CFLAGS = -g -Wall
 
-all: bt pair desc reset1200
+all: bt pair desc
+	platformio run --silent
 
-reset1200: reset1200.o
-	$(CC) $(CFLAGS) -o reset1200 reset1200.o
+verbose:
+	platformio run -v
+
+clean:
+	platformio run -t clean
 
 bt: bt.o
 	$(CC) $(CFLAGS) -o bt bt.o -lbluetooth
@@ -15,4 +19,4 @@ pair: pair.o
 	$(CC) $(CFLAGS) -o pair pair.o -lbluetooth
 
 upload:
-	platformio run --target upload
+	platformio run --silent --target upload
