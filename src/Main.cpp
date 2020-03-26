@@ -96,6 +96,8 @@ void startAdv(void)
   Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
 }
 
+/* ~/.platformio/packages/framework-arduinoadafruitnrf52/libraries/Bluefruit52Lib/src/clients/ */
+
 void loop() 
 {
   static unsigned int val;
@@ -108,7 +110,11 @@ void loop()
   while (bleuart.available()) {
     int c = bleuart.read();
     char buf[100];
-    sprintf (buf, "got %c 0x%x", c, c);
-    Serial.println(buf);
+    buf[0] = c;
+    buf[1] = 0;
+    Serial.print(buf);
+
+    bleuart.write('!');
+
   }
 }

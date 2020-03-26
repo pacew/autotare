@@ -13,7 +13,7 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
-void do_xmit (int sock);
+void do_xmit (int sock, char *msg);
 
 void
 dump (void *buf, int n)
@@ -187,11 +187,6 @@ connect_bluetooth (void)
 		goto bad;
 	}
 
-	if (fcntl (sock, F_SETFL, 0) < 0) {
-		perror ("fcntl turn off NONBLOCK");
-		exit (1);
-	}
-
 	return (sock);
 
 bad:
@@ -323,6 +318,28 @@ process_resp (unsigned char *pdu, int togo)
 }
 
 int
+await_readable (int sock, double secs)
+{
+	fd_set rset;
+	struct timeval tv;
+
+	FD_ZERO (&rset);
+	FD_SET (sock, &rset);
+	tv.tv_sec = secs;
+	tv.tv_usec = (secs - tv.tv_sec) * 1e6;
+
+	if (select (sock + 1, &rset, NULL, NULL, &tv) < 0) {
+		perror ("select");
+		exit (1);
+	}
+
+	if (FD_ISSET (sock, &rset))
+		return (0);
+
+	return (-1);
+}
+
+int
 read_handles (int sock)
 {
 	int start_handle, end_handle;
@@ -358,6 +375,11 @@ read_handles (int sock)
 		if (write (sock, pdu_buf, used) < 0) {
 			perror ("write");
 			exit (1);
+		}
+
+		if (await_readable (sock, 1.0) < 0) {
+			printf ("read timeout\n");
+			break;
 		}
 
 		if ((togo = read (sock, pdu_buf, sizeof pdu_buf)) < 0) {
@@ -426,19 +448,38 @@ main (int argc, char **argv)
 		exit (1);
 	}
 
-	do_xmit (sock);
-	sleep (3);
-	do_xmit (sock);
+	do_xmit (sock, "hello");
 
 	while (1) {
+		fd_set rset;
+		
+		FD_ZERO (&rset);
+		FD_SET (0, &rset);
+		FD_SET (sock, &rset);
 
-		char rbuf[100];
-		int rlen;
-		printf ("%.3f reading\n", get_secs ());
+		if (select (sock + 1, &rset, NULL, NULL, NULL) < 0) {
+			perror ("select");
+			exit (1);
+		}
+
+		if (FD_ISSET (0, &rset)) {
+			char xbuf[100];
+			int n;
+			n = read (0, xbuf, sizeof xbuf - 1);
+			if (n > 0) {
+				xbuf[n] = 0;
+				do_xmit (sock, xbuf);
+			}
+		}
+
+		if (FD_ISSET (sock, &rset)) {
+			char rbuf[100];
+			int rlen;
 	
-		rlen = read (sock, rbuf, sizeof rbuf);
-		printf ("%.3f received %d\n", get_secs (), rlen);
-		dump (rbuf, rlen);
+			rlen = read (sock, rbuf, sizeof rbuf);
+			printf ("%.3f received %d\n", get_secs (), rlen);
+			dump (rbuf, rlen);
+		}
 	}
 
 	return (0);
@@ -446,18 +487,11 @@ main (int argc, char **argv)
 
 				
 void
-do_xmit (int sock)
+do_xmit (int sock, char *msg)
 {
 	uint8_t pdu_base[100], *pdu;
 	int pdu_len;
-	char msg[50];
-	time_t t;
-	struct tm tm;
 
-	t = time (NULL);
-	tm = *localtime (&t);
-	sprintf (msg, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
-	
 	pdu = pdu_base;
 	*pdu++ = ATT_OP_WRITE_REQ;
 	*pdu++ = tx_handle;
