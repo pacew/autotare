@@ -20,12 +20,22 @@
 #define ATT_OP_READ_BY_GROUP_REQ	0x10
 #define ATT_OP_READ_BY_GROUP_RESP	0x11
 #define ATT_OP_WRITE_REQ		0x12
+#define ATT_OP_WRITE_CMD		0x52
 
 #define ATT_FIND_INFO_RESP_FMT_16BIT		0x01
 
 
 #define GATT_PRIM_SVC_UUID		0x2800
 
+#define TX_HANDLE_UUID "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define RX_HANDLE_UUID "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+
+#define AUTOTARE_SERVICE_UUID "75c3c6d0-75e4-4223-a823-bdc65e738996"
+
+#define CLIENT_CHAR_CONFIG_UUID "00002902-0000-1000-8000-00805f9b34fb"
+
+
+void write_cmd (int sock, int handle, void *buf, int len);
 
 void do_xmit (int sock, char *msg);
 
@@ -210,9 +220,6 @@ struct handle {
 	int handle;
 };
 
-#define TX_HANDLE_UUID "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
-#define RX_HANDLE_UUID "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
-
 int tx_handle;
 int rx_handle;
 
@@ -225,8 +232,10 @@ uuid_to_bin (char *str, unsigned char *bin)
 	
 	p = str;
 	for (i = 0; i < 16; i++) {
-		if (sscanf (p, "%2x", &val) != 1)
+		if (sscanf (p, "%2x", &val) != 1) {
+			memset (bin, 0, 16);
 			return (-1);
+		}
 		bin[i] = val;
 		p += 2;
 		if (*p == '-')
@@ -391,6 +400,59 @@ lookup_handle (char *uuid_str)
 	}
 
 	return (-1);
+}
+
+struct service *
+find_service_by_uuid (char *uuid)
+{
+	struct service *sp;
+	unsigned char uuid_bin[16];
+
+	uuid_to_bin (uuid, uuid_bin);
+	for (sp = services; sp; sp = sp->next) {
+		if (memcmp (sp->uuid_bin, uuid_bin, 16) == 0)
+			return (sp);
+	}
+
+	return (NULL);
+}
+
+int
+find_handle_in_service (char *service_uuid, char *char_uuid)
+{
+	unsigned char service_uuid_bin[16];
+	unsigned char char_uuid_bin[16];
+	struct service *sp;
+	struct characteristic *cp;
+
+	uuid_to_bin (service_uuid, service_uuid_bin);
+	uuid_to_bin (char_uuid, char_uuid_bin);
+
+	if ((sp = find_service_by_uuid (service_uuid)) == NULL)
+		return (-1);
+	
+	for (cp = sp->characteristics; cp; cp = cp->next) {
+		if (memcmp (cp->uuid_bin, char_uuid_bin, 16) == 0)
+			return (cp->handle);
+	}
+
+	return (-1);
+}
+
+void
+enable_notifications (int sock)
+{
+	int handle;
+	unsigned char xbuf[100];
+	
+	if ((handle = find_handle_in_service (AUTOTARE_SERVICE_UUID,
+					      CLIENT_CHAR_CONFIG_UUID)) < 0) {
+		fprintf (stderr, "can't find ccc handle\n");
+		return;
+	}
+	
+	xbuf[0] = 0x01;
+	write_cmd (sock, handle, xbuf, 1);
 }
 
 void read_services (int sock);
@@ -691,6 +753,8 @@ main (int argc, char **argv)
 	
 	do_xmit (sock, "hello");
 
+	enable_notifications (sock);
+
 	while (1) {
 		fd_set rset;
 		
@@ -747,3 +811,28 @@ do_xmit (int sock, char *msg)
 		exit (1);
 	}
 }
+
+void
+write_cmd (int sock, int handle, void *buf, int len)
+{
+	uint8_t pdu_base[100], *pdu;
+	int pdu_len;
+
+	pdu = pdu_base;
+	*pdu++ = ATT_OP_WRITE_CMD;
+	*pdu++ = handle;
+	*pdu++ = handle >> 8;
+	memcpy (pdu, buf, len);
+	pdu += len;
+	pdu_len = pdu - pdu_base;
+	
+	printf ("write_cmd 0x%x\n", handle);
+	dump (pdu_base, pdu_len);
+
+	if (write (sock, pdu_base, pdu_len) < 0) {
+		perror ("write");
+		exit (1);
+	}
+}
+
+
