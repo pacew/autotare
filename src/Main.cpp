@@ -22,6 +22,8 @@ void startAdv(void);
 void connect_callback(uint16_t conn_handle);
 void disconnect_callback(uint16_t conn_handle, uint8_t reason);
 
+long scale_val;
+int scale_val_updated;
 
 // Beacon uses the Manufacturer Specific Data field in the advertising
 // packet, which means you must provide a valid Manufacturer ID. Update
@@ -59,8 +61,6 @@ const uint8_t AUTOTARE_UUID_WEIGHT[] = {
 BLEService autotare_service(AUTOTARE_UUID_SERVICE);
 BLECharacteristic autotare_weight(AUTOTARE_UUID_WEIGHT);
 
-uint8_t weight_state;
-
 unsigned long last_millis;
 
 void setup() 
@@ -74,8 +74,6 @@ void setup()
 
   Serial.println("autotare");
   
-  weight_state = 7;
-
   Bluefruit.begin();
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -83,11 +81,8 @@ void setup()
   autotare_service.begin();
   autotare_weight.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
   autotare_weight.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  autotare_weight.setFixedLen(1);
+  autotare_weight.setFixedLen(sizeof scale_val);
   autotare_weight.begin();
-  autotare_weight.write8(weight_state);
-
-
 
 
   // off Blue LED for lowest power consumption
@@ -149,9 +144,6 @@ void startAdv(void)
   Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
 }
 
-long scale_val;
-int scale_val_updated;
-
 void
 read_scale (void)
 {
@@ -189,7 +181,7 @@ read_scale (void)
   }
 
   if (val & 0x800000)
-    val |= 0xffff0000;
+    val |= 0xff000000;
 
   scale_val = val;
   scale_val_updated = 1;
@@ -225,28 +217,9 @@ void loop()
 
   }
 
-  unsigned long delta = millis () - last_millis;
-  if (delta > 1000) {
-    last_millis = millis();
-
-    weight_state++;
-
-    int flag = 0;
-    
-    if (Bluefruit.connected()) {
-      flag |= 1;
-      if (autotare_weight.notify8(weight_state))
-	flag |= 0x10;
-    }
-
-    char buf[100];
-    char *p;
-
-    p = buf;
-    p += sprintf (p, "tick 0x%x 0x%x ",
-		  weight_state, flag);
-    *p = 0;
-    Serial.println(buf);
+  if (Bluefruit.connected() && scale_val_updated) {
+    scale_val_updated = 0;
+    autotare_weight.notify(&scale_val, sizeof scale_val);
   }
 
 }

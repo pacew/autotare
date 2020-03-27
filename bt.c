@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <time.h>
 #include <ctype.h>
+#include <math.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 
@@ -732,10 +733,100 @@ process_resp (unsigned char *pdu, int togo)
 }
 
 void
+lpf_step (double *valp, double newval, double dt, double tc)
+{
+        double factor;
+
+	factor = 2 * M_PI * 1/tc * dt;
+        if (factor > 1)
+                factor = 1;
+        *valp = *valp * (1 - factor) + newval * factor;
+}
+	
+double rawval_smooth;
+
+double cal1_raw = -9200;
+double cal1_g = 0;
+
+double cal2_raw = -15850;
+double cal2_g = 10;
+
+double
+raw_to_grams (double raw)
+{
+	return ((raw - cal1_raw) / (cal2_raw - cal1_raw) * (cal2_g - cal1_g) + cal1_g);
+}
+
+void
+process_weight (int rawval)
+{
+	static FILE *f_raw;
+	static FILE *f_raw_smooth;
+	static FILE *f_grams;
+	static double start;
+	static double last;
+	double now;
+	double x;
+	double tc;
+	double dt;
+
+	now = get_secs ();
+	dt = now - last;
+	last = now;
+
+	if (f_raw == NULL) {
+		start = now;
+		dt = .001;
+
+		if ((f_raw = fopen ("raw.dat", "w")) == NULL) {
+			fprintf (stderr, "can't create raw.dat\n");
+			exit (1);
+		}
+		if ((f_raw_smooth = fopen ("smooth.dat", "w")) == NULL) {
+			fprintf (stderr, "can't create smooth.dat\n");
+			exit (1);
+		}
+		if ((f_grams = fopen ("g.dat", "w")) == NULL) {
+			fprintf (stderr, "can't create g.dat\n");
+			exit (1);
+		}
+	}
+
+	x = now - start;
+	
+	tc = 5;
+	lpf_step (&rawval_smooth, rawval, dt, tc);
+
+	fprintf (f_raw, "%.3f %d\n", x, rawval);
+	fprintf (f_raw_smooth, "%.3f %.6f\n", x, rawval_smooth);
+	fprintf (f_grams, "%8.3f %8.1f\n", x, raw_to_grams (rawval));
+
+	fflush (f_raw);
+	fflush (f_raw_smooth);
+	fflush (f_grams);
+}
+
+void
 process_notify (int handle, unsigned char *rawbuf, int rawlen)
 {
-	printf ("notify from 0x%x\n", handle);
-	dump (rawbuf, rawlen);
+	int rawval;
+	
+	if (vflag) {
+		printf ("notify from 0x%x\n", handle);
+		dump (rawbuf, rawlen);
+	}
+
+	if (rawlen != 4) {
+		printf ("can't parse notify data\n");
+		return;
+	}
+
+	rawval = rawbuf[0] 
+		| (rawbuf[1] << 8)
+		| (rawbuf[2] << 16)
+		| (rawbuf[3] << 24);
+
+	process_weight (rawval);
 }
 
 void
