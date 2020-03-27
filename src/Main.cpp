@@ -15,6 +15,9 @@
 
 #define SLIDESWITCH 7
 
+#define HX711_CLOCK A4
+#define HX711_DATA A5
+
 void startAdv(void);
 void connect_callback(uint16_t conn_handle);
 void disconnect_callback(uint16_t conn_handle, uint8_t reason);
@@ -105,6 +108,14 @@ void setup()
   last_millis = millis();
 
   pinMode(SLIDESWITCH, INPUT_PULLUP);
+
+  digitalWrite(HX711_CLOCK, 0);
+  pinMode(HX711_CLOCK, OUTPUT);
+  pinMode(HX711_DATA, INPUT);
+
+  char buf[100];
+  sprintf (buf, "a4 %d a5 %d\n", A4, A5);
+  Serial.print(buf);
 }
 
 void startAdv(void)
@@ -138,7 +149,60 @@ void startAdv(void)
   Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
 }
 
+long scale_val;
+int scale_val_updated;
+
+void
+read_scale (void)
+{
+  int i;
+  long val;
+  
+  if (digitalRead (HX711_DATA) != 0)
+    return;
+
+
+  val = 0;
+  for (i = 0; i < 24; i++) {
+    /* delay at least 100ns before first clock,
+     * and at least 200ns between successive clocks
+     */
+    delayMicroseconds(1);
+
+    digitalWrite(HX711_CLOCK, 1);
+    /* at least 100ns before reading data*/
+    delayMicroseconds(1);
+    val <<= 1;
+    if (digitalRead(HX711_DATA))
+      val |= 1;
+    /* between 200ns and 50us before dropping clock */
+    delayMicroseconds(1);
+    digitalWrite(HX711_CLOCK, 0);
+  }
+
+  /* 1 extra clock -> gain 128; 3 extra -> gain 64 */
+  for (i = 0; i < 1; i++) {
+    delayMicroseconds(1);
+    digitalWrite(HX711_CLOCK, 1);
+    delayMicroseconds(1);
+    digitalWrite(HX711_CLOCK, 0);
+  }
+
+  if (val & 0x800000)
+    val |= 0xffff0000;
+
+  scale_val = val;
+  scale_val_updated = 1;
+
+  char buf[100];
+  sprintf (buf, "scale 0x%8lx %ld\n",
+	   scale_val, scale_val);
+  Serial.print(buf);
+}
+
+
 /* ~/.platformio/packages/framework-arduinoadafruitnrf52/libraries/Bluefruit52Lib/src/clients/ */
+
 
 void loop() 
 {
@@ -150,6 +214,8 @@ void loop()
   else
     digitalWrite(LED_BUILTIN, LOW);
     
+  read_scale ();
+
   while (bleuart.available()) {
     int c = bleuart.read();
     char buf[100];
