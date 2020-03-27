@@ -20,6 +20,8 @@
 #define ATT_OP_READ_BY_GROUP_REQ	0x10
 #define ATT_OP_READ_BY_GROUP_RESP	0x11
 #define ATT_OP_WRITE_REQ		0x12
+#define ATT_OP_WRITE_RESP		0x13
+#define ATT_OP_HANDLE_NOTIFY		0x1B
 #define ATT_OP_WRITE_CMD		0x52
 
 #define ATT_FIND_INFO_RESP_FMT_16BIT		0x01
@@ -729,6 +731,47 @@ process_resp (unsigned char *pdu, int togo)
 	return (handle);
 }
 
+void
+process_notify (int handle, unsigned char *rawbuf, int rawlen)
+{
+	printf ("notify from 0x%x\n", handle);
+	dump (rawbuf, rawlen);
+}
+
+void
+process_input (unsigned char *rbuf, int rlen)
+{
+	unsigned char *ptr;
+	int togo;
+	int opcode;
+	int handle;
+	
+	ptr = rbuf;
+	togo = rlen;
+
+	if (togo == 0)
+		return;
+	
+	opcode = *ptr++;
+	togo--;
+
+	switch (opcode) {
+	case ATT_OP_WRITE_RESP:
+		printf ("[rcv WRITE_RESP]\n");
+		break;
+	case ATT_OP_HANDLE_NOTIFY:
+		handle = ptr[0] | (ptr[1] << 8);
+		ptr += 2;
+		togo -= 2;
+		process_notify (handle, ptr, togo);
+		break;
+	default:
+		printf ("unknown opcode 0x%x\n", opcode);
+		dump (rbuf, rlen);
+		break;
+	}
+}
+
 int
 main (int argc, char **argv)
 {
@@ -778,12 +821,11 @@ main (int argc, char **argv)
 		}
 
 		if (FD_ISSET (sock, &rset)) {
-			char rbuf[100];
+			unsigned char rbuf[100];
 			int rlen;
 	
 			rlen = read (sock, rbuf, sizeof rbuf);
-			printf ("%.3f received %d\n", get_secs (), rlen);
-			dump (rbuf, rlen);
+			process_input (rbuf, rlen);
 		}
 	}
 

@@ -13,6 +13,8 @@
 *********************************************************************/
 #include <bluefruit.h>
 
+#define SLIDESWITCH 7
+
 void startAdv(void);
 void connect_callback(uint16_t conn_handle);
 void disconnect_callback(uint16_t conn_handle, uint8_t reason);
@@ -61,13 +63,14 @@ unsigned long last_millis;
 void setup() 
 {
   pinMode(LED_BUILTIN, OUTPUT);
+  
   digitalWrite(LED_BUILTIN, HIGH);
 
   Serial.begin(115200);
   while ( !Serial ) delay(10);   // for nrf52840 with native usb
 
   Serial.println("autotare");
-
+  
   weight_state = 7;
 
   Bluefruit.begin();
@@ -100,6 +103,8 @@ void setup()
   Serial.println("ready");
 
   last_millis = millis();
+
+  pinMode(SLIDESWITCH, INPUT_PULLUP);
 }
 
 void startAdv(void)
@@ -167,8 +172,14 @@ void loop()
       if (autotare_weight.notify8(weight_state))
 	flag |= 0x10;
     }
+
     char buf[100];
-    sprintf (buf, "tick %d 0x%x 0x%x", weight_state, weight_state, flag);
+    char *p;
+
+    p = buf;
+    p += sprintf (p, "tick 0x%x 0x%x ",
+		  weight_state, flag);
+    *p = 0;
     Serial.println(buf);
   }
 

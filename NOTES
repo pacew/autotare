@@ -6,6 +6,9 @@ notifications from autotare
 gatttool -b DC:99:65:B8:F1:F6 -t random -I
 connect
 char-write-cmd 0x11 01
+Notification handle = 0x0010 value: af 
+Notification handle = 0x0010 value: b0 
+Notification handle = 0x0010 value: b1 
 
 
 
