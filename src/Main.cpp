@@ -14,6 +14,9 @@
 #include <bluefruit.h>
 
 void startAdv(void);
+void connect_callback(uint16_t conn_handle);
+void disconnect_callback(uint16_t conn_handle, uint8_t reason);
+
 
 // Beacon uses the Manufacturer Specific Data field in the advertising
 // packet, which means you must provide a valid Manufacturer ID. Update
@@ -35,6 +38,26 @@ BLEBeacon beacon(beaconUuid, 0x0000, 0x0000, -54);
 
 BLEUart bleuart;
 
+
+/* 75c3c6d0-75e4-4223-a823-bdc65e738996 */
+const uint8_t AUTOTARE_UUID_SERVICE[] = {
+  0x96, 0x89, 0x73, 0x5e, 0xc6, 0xbd, 0x23, 0xa8,
+  0x23, 0x42, 0xe4, 0x75, 0xd0, 0xc6, 0xc3, 0x75,
+};
+
+/* 722bc7b5-1728-4e39-8867-3161d8dd5e20 */
+const uint8_t AUTOTARE_UUID_WEIGHT[] = {
+  0x20, 0x5e, 0xdd, 0xd8, 0x61, 0x31, 0x67, 0x88,
+  0x39, 0x4e, 0x28, 0x17, 0xb5, 0xc7, 0x2b, 0x72,
+};
+
+BLEService autotare_service(AUTOTARE_UUID_SERVICE);
+BLECharacteristic autotare_weight(AUTOTARE_UUID_WEIGHT);
+
+uint8_t weight_state;
+
+unsigned long last_millis;
+
 void setup() 
 {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -43,15 +66,28 @@ void setup()
   Serial.begin(115200);
   while ( !Serial ) delay(10);   // for nrf52840 with native usb
 
-  Serial.println("Bluefruit52 Beacon Example");
-  Serial.println("--------------------------\n");
+  Serial.println("autotare");
+
+  weight_state = 7;
 
   Bluefruit.begin();
+  Bluefruit.Periph.setConnectCallback(connect_callback);
+  Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
+
+  autotare_service.begin();
+  autotare_weight.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
+  autotare_weight.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  autotare_weight.setFixedLen(1);
+  autotare_weight.begin();
+  autotare_weight.write8(weight_state);
+
+
+
 
   // off Blue LED for lowest power consumption
   Bluefruit.autoConnLed(false);
   Bluefruit.setTxPower(0);    // Check bluefruit.h for supported values
-  Bluefruit.setName("test");
+  Bluefruit.setName("autotare");
 
   // Manufacturer ID is required for Manufacturer Specific Data
   beacon.setManufacturer(MANUFACTURER_ID);
@@ -61,10 +97,9 @@ void setup()
   // Setup the advertising packet
   startAdv();
 
-  Serial.println("Broadcasting beacon, open your beacon app to test");
+  Serial.println("ready");
 
-  // Suspend Loop() to save power, since we didn't have any code there
-  //  suspendLoop();
+  last_millis = millis();
 }
 
 void startAdv(void)
@@ -75,6 +110,8 @@ void startAdv(void)
   Bluefruit.Advertising.setBeacon(beacon);
 
   Bluefruit.Advertising.addService(bleuart);
+  Bluefruit.Advertising.addService(autotare_service);
+
 
   // Secondary Scan Response packet (optional)
   // Since there is no room for 'Name' in Advertising packet
@@ -101,6 +138,7 @@ void startAdv(void)
 void loop() 
 {
   static unsigned int val;
+  
   val++;
   if ((val & 0xf000) == 0xf000)
     digitalWrite(LED_BUILTIN, HIGH);
@@ -114,7 +152,40 @@ void loop()
     buf[1] = 0;
     Serial.print(buf);
 
-    bleuart.write('!');
-
   }
+
+  unsigned long delta = millis () - last_millis;
+  if (delta > 1000) {
+    last_millis = millis();
+
+    weight_state++;
+
+    int flag = 0;
+    
+    if (Bluefruit.connected()) {
+      flag |= 1;
+      if (autotare_weight.notify8(weight_state))
+	flag |= 0x10;
+    }
+    char buf[100];
+    sprintf (buf, "tick %d 0x%x 0x%x", weight_state, weight_state, flag);
+    Serial.println(buf);
+  }
+
+}
+
+void
+connect_callback(uint16_t conn_handle)
+{
+  Serial.println ("connected");
+  if (0) {
+    Serial.println("Keep advertising");
+    Bluefruit.Advertising.start(0);
+  }
+}
+
+void
+disconnect_callback(uint16_t conn_handle, uint8_t reason)
+{
+  Serial.println("disconnect");
 }

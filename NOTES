@@ -1,3 +1,39 @@
+notifications
+https://stackoverflow.com/questions/15657007/bluetooth-low-energy-listening-for-notifications-indications-in-linux
+http://blog.firszt.eu/index.php?post/2015/09/13/bt
+
+notifications from autotare
+gatttool -b DC:99:65:B8:F1:F6 -t random -I
+connect
+char-write-cmd 0x11 01
+
+
+
+notifications from hrm
+gatttool -b DC:99:65:B8:F1:F6 -t random -I
+connect
+char-write-cmd 0x20 01
+
+
+
+gatttool -I
+connect
+primary
+characteristics 0xfrom 0xto
+char-read-hnd 0x..
+char-desc 0xfrom 0xtoo
+char-write-cmd 0xhand 0100
+
+
+
+gatttool -b DC:99:65:B8:F1:F6 -t random --char-write-req --handle=0x10 --value=0x0100 --listen
+gatttool -b DC:99:65:B8:F1:F6 -t random --char-write-req --handle=0x10 --value=0100 --listen
+
+gatttool -b DC:99:65:B8:F1:F6 -t random --char-write --handle=0x10 --value=0100 --listen
+
+https://learn.adafruit.com/bluefruit-nrf52-feather-learning-guide/bluefruit-nrf52-api
+
+
 adafruit-nrfutil --verbose dfu serial -pkg /tmp/arduino_build_447027/Blink.ino.zip -p /dev/ttyACM0 -b 115200 --singlebank 
 
 
@@ -173,3 +209,18 @@ in bashrc . /usr/local/bin/virtualenvwrapper.sh
 mkvirtualenv proj
 workon proj
 lsvirtualenv
+================================================================
+
+adafruit example characteristics
+
+00002800-0000-1000-8000-00805f9b34fb
+00002803-0000-1000-8000-00805f9b34fb BLE_UUID_CHARACTERISTIC
+00002901-0000-1000-8000-00805f9b34fb
+00002902-0000-1000-8000-00805f9b34fb Client Characteristic Configuration
+00002a00-0000-1000-8000-00805f9b34fb Device Name
+00002a01-0000-1000-8000-00805f9b34fb Appearance
+00002a04-0000-1000-8000-00805f9b34fb PPCP
+00002a05-0000-1000-8000-00805f9b34fb 
+00002aa6-0000-1000-8000-00805f9b34fb
+6e400002-b5a3-f393-e0a9-e50e24dcca9e
+6e400003-b5a3-f393-e0a9-e50e24dcca9e
