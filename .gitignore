@@ -1,4 +1,6 @@
 *~
+TMP.*
+cfg.json
 ?
 __pycache__/
 bt
