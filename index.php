@@ -17,7 +17,27 @@ $body .= "raw val ";
 $body .= "<span id='rawval'>###</span>\n";
 $body .= "</div>\n";
 
+$body .= "<div>\n";
+$body .= "raw smoothed ";
+$body .= "<span id='rawval_smoothed'>###</span>\n";
+$body .= "</div>\n";
 
-$body .= "<button id='button1'>button1</button>\n";
+$body .= "<div>\n";
+$body .= "grams ";
+$body .= "<span id='grams'>###</span>\n";
+$body .= "</div>\n";
+
+
+$body .= "<div>\n";
+$body .= "<button id='button1'>connect</button>\n";
+$body .= "</div>\n";
+
+$body .= "<div>\n";
+$body .= "<button id='tare'>tare</button>\n";
+$body .= "</div>\n";
+
+$body .= "<div>\n";
+$body .= "<button id='cal10'>cal 10g</button>\n";
+$body .= "</div>\n";
 
 pfinish ();
