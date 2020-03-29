@@ -35,19 +35,31 @@ function do_cal10 () {
 var count = 0
 function handle_weight(ev) {
   var buf = ev.target.value;
-  var a = buf.getUint8(0);
-  var b = buf.getUint8(1);
-  var c = buf.getUint8(2);
-  var d = buf.getUint8(3);
-  var rawval = a | (b << 8) | (c << 16) | (d << 24)
-  /* i think javascript promises to do bit operations 32 bit signed */
+  var rawval = buf.getUint8(0) |
+      (buf.getUint8(1) << 8) |
+      (buf.getUint8(2) << 16);
+  if (rawval & 0x800000)
+    rawval |= -1 << 24;
+
   $("#rawval").html(rawval);
+
+  therm_raw = buf.getUint8(3) | (buf.getUint8(4) << 8);
+  T0 = 273.15 + 25;
+  B = 3380;
+  R0 = 10e3;
+  therm_volts = therm_raw / 4096.0 * 3.0;
+  current = (therm_volts / R0);
+  R = (3.3 - therm_volts) / current;
+  Tk = 1 / (1/T0 + Math.log (R/R0)/B);
+  Tc = Tk - 273.15;
+  Tf = Tc * 9 / 5 + 32;
+  $("#temperature").html(Tf.toFixed(1));
 
   var millis = Date.now()
   var dt = (millis - last_millis) / 1000.0
   last_millis = millis
 
-  tc = 10
+  tc = 1;
   raw_smoothed = lpf_step (raw_smoothed, rawval, dt, tc)
   $("#rawval_smoothed").html(raw_smoothed.toFixed(0))
 
@@ -81,7 +93,7 @@ async function do_connect () {
     
     server = await device.gatt.connect();
     
-    console.log ("xserver", server);
+    console.log ("server", server);
     
     services = await server.getPrimaryServices();
     console.log(services);

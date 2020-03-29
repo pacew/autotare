@@ -13,6 +13,11 @@ $body .= "</div>\n";
 $body .= "<p>hello</p>\n";
 
 $body .= "<div>\n";
+$body .= "temperature ";
+$body .= "<span id='temperature'>###</span>\n";
+$body .= "</div>\n";
+
+$body .= "<div>\n";
 $body .= "raw val ";
 $body .= "<span id='rawval'>###</span>\n";
 $body .= "</div>\n";

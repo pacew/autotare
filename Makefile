@@ -12,7 +12,7 @@ clean:
 	platformio run -t clean
 
 bt: bt.o
-	$(CC) $(CFLAGS) -o bt bt.o -lbluetooth
+	$(CC) $(CFLAGS) -o bt bt.o -lbluetooth -lm
 
 desc: desc.o
 	$(CC) $(CFLAGS) -o desc desc.o -lbluetooth

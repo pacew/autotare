@@ -39,10 +39,7 @@ void setup()
   digitalWrite(LED_BUILTIN, HIGH);
 
   Serial.begin(115200);
-  while ( !Serial ) delay(10);   // for nrf52840 with native usb
 
-  Serial.println("autotare");
-  
   Bluefruit.begin();
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -54,7 +51,7 @@ void setup()
   autotare_service.begin();
   autotare_weight.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
   autotare_weight.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  autotare_weight.setFixedLen(sizeof scale_val);
+  autotare_weight.setFixedLen(5);
   autotare_weight.begin();
 
   Bluefruit.setTxPower(0);    // Check bluefruit.h for supported values
@@ -62,8 +59,6 @@ void setup()
 
   // Setup the advertising packet
   startAdv();
-
-  Serial.println("ready");
 
   last_millis = millis();
 
@@ -73,9 +68,8 @@ void setup()
   pinMode(HX711_CLOCK, OUTPUT);
   pinMode(HX711_DATA, INPUT);
 
-  char buf[100];
-  sprintf (buf, "a4 %d a5 %d\n", A4, A5);
-  Serial.print(buf);
+  analogReference(AR_INTERNAL_3_0);
+  analogReadResolution(12);
 }
 
 void startAdv(void)
@@ -150,7 +144,7 @@ read_scale (void)
   scale_val = val;
   scale_val_updated = 1;
 
-  if (0) {
+  if (0 && Serial) {
     char buf[100];
     sprintf (buf, "scale 0x%8lx %ld\n",
 	     scale_val, scale_val);
@@ -166,6 +160,14 @@ void loop()
 {
   static unsigned int val;
   
+  if (Serial) {
+    static int printed_banner;
+    if (printed_banner == 0) {
+      printed_banner = 1;
+      Serial.println("autotare");
+    }
+  }
+
   val++;
   if ((val & 0xf000) == 0xf000)
     digitalWrite(LED_BUILTIN, HIGH);
@@ -176,16 +178,28 @@ void loop()
 
   while (bleuart.available()) {
     int c = bleuart.read();
-    char buf[100];
-    buf[0] = c;
-    buf[1] = 0;
-    Serial.print(buf);
-
+    if (Serial) {
+      char buf[100];
+      buf[0] = c;
+      buf[1] = 0;
+      Serial.print(buf);
+    }
   }
 
   if (Bluefruit.connected() && scale_val_updated) {
     scale_val_updated = 0;
-    autotare_weight.notify(&scale_val, sizeof scale_val);
+    unsigned char pkt[6];
+    int thermistor;
+
+    thermistor = analogRead(A9);
+
+    pkt[0] = scale_val;
+    pkt[1] = scale_val >> 8;
+    pkt[2] = scale_val >> 16;
+    pkt[3] = thermistor;
+    pkt[4] = thermistor >> 8;
+
+    autotare_weight.notify(pkt, 5);
   }
 
 }
@@ -193,15 +207,13 @@ void loop()
 void
 connect_callback(uint16_t conn_handle)
 {
-  Serial.println ("connected");
-  if (0) {
-    Serial.println("Keep advertising");
-    Bluefruit.Advertising.start(0);
-  }
+  if (Serial)
+    Serial.println ("connected");
 }
 
 void
 disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
-  Serial.println("disconnect");
+  if (Serial)
+    Serial.println("disconnect");
 }

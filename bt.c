@@ -810,23 +810,41 @@ void
 process_notify (int handle, unsigned char *rawbuf, int rawlen)
 {
 	int rawval;
-	
+	int therm_raw;
+
 	if (vflag) {
 		printf ("notify from 0x%x\n", handle);
 		dump (rawbuf, rawlen);
 	}
 
-	if (rawlen != 4) {
+	if (rawlen != 5) {
 		printf ("can't parse notify data\n");
 		return;
 	}
 
 	rawval = rawbuf[0] 
 		| (rawbuf[1] << 8)
-		| (rawbuf[2] << 16)
-		| (rawbuf[3] << 24);
+		| (rawbuf[2] << 16);
+	if (rawval & 0x00800000)
+		rawval |= -1 << 24;
+
+	therm_raw = rawbuf[3]
+		| (rawbuf[4] << 8);
 
 	process_weight (rawval);
+
+	double T0 = 273.15 + 25;
+	double B = 3380; /* 3380 3950 ? */
+	double R0 = 10e3;
+	double therm_volts = therm_raw / 4096.0 * 3.0;
+	double current = (therm_volts / R0);
+	double R = (3.3 - therm_volts) / current;
+	double Tk = 1 / (1/T0 + log (R/R0)/B);
+	double Tc = Tk - 273.15;
+	double Tf = Tc * 9 / 5 + 32;
+
+	printf ("%5d  %8.3f %8.1f  %8.2f  %8.2f\n", 
+		therm_raw, therm_volts, R, Tc, Tf);
 }
 
 void
