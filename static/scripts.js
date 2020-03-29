@@ -1,5 +1,4 @@
-var xautotare_service_uuid = '75c3c6d0-75e4-4223-a823-bdc65e738996'
-var autotare_service_uuid = '0000ec00-0000-1000-8000-00805f9b34fb'
+var autotare_service_uuid = '75c3c6d0-75e4-4223-a823-bdc65e738996'
 var autotare_weight_uuid = '722bc7b5-1728-4e39-8867-3161d8dd5e20'
 
 var cal1_raw = -9550;
@@ -73,7 +72,7 @@ async function do_connect () {
     };
 
     device = await navigator.bluetooth.requestDevice({
-      filters: [name_filter],
+      filters: [service_filter],
       optionalServices: [autotare_service_uuid]
     });
     

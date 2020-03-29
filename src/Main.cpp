@@ -1,16 +1,3 @@
-/*********************************************************************
- This is an example for our nRF52 based Bluefruit LE modules
-
- Pick one up today in the adafruit shop!
-
- Adafruit invests time and resources providing this open source code,
- please support Adafruit and open-source hardware by purchasing
- products from Adafruit!
-
- MIT license, check LICENSE for more information
- All text above, and the splash screen below must be included in
- any redistribution
-*********************************************************************/
 #include <bluefruit.h>
 
 #define SLIDESWITCH 7
@@ -29,15 +16,9 @@ BLEUart bleuart;
 
 
 /* 75c3c6d0-75e4-4223-a823-bdc65e738996 */
-const uint8_t xAUTOTARE_UUID_SERVICE[] = {
+const uint8_t AUTOTARE_UUID_SERVICE[] = {
   0x96, 0x89, 0x73, 0x5e, 0xc6, 0xbd, 0x23, 0xa8,
   0x23, 0x42, 0xe4, 0x75, 0xd0, 0xc6, 0xc3, 0x75,
-};
-
-/* 0000ec00-0000-1000-8000-00805f9b34fb */
-const uint8_t AUTOTARE_UUID_SERVICE[] = {
-  0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00, 0x00, 0x80,
-  0x00, 0x10, 0x00, 0x00, 0x00, 0xec, 0x00, 0x00,
 };
 
 /* 722bc7b5-1728-4e39-8867-3161d8dd5e20 */
