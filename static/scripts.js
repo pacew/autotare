@@ -98,15 +98,6 @@ function do_button1 () {
   }).then(server => {
     console.log ("server", server);
     the_server = server;
-
-    server.getPrimaryServices(
-    ).then(services => {
-      services.forEach(service => {
-	console.log ("slist", service)
-      })
-    }).then(() => {
-      console.log ("done");
-    })
     
     return server.getPrimaryService(autotare_service_uuid);
   }).then(service => {
@@ -126,7 +117,7 @@ function do_button1 () {
 
 
 $(function () {
-  $("#button1").click(do_list)
+  $("#button1").click(do_button1)
   $("#tare").click(do_tare)
   $("#cal10").click(do_cal10)
 });
