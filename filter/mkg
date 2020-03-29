@@ -1,0 +1,87 @@
+#! /usr/bin/env python3
+
+import numpy as np
+
+rawval_for_0 = 8939.2
+rawval_for_10 = 15579.1
+
+def read_dat(filename):
+    result = []
+    with open(filename) as inf:
+        for row in inf:
+            cols = row.split()
+            ts = float(cols[0])
+            rawval = -int(cols[1])
+            result.append([ts, rawval])
+    return result
+
+def get_rawvals(dat):
+    vals = []
+    for row in dat:
+        vals.append(row[1])
+    return vals
+
+dat_files = [
+    "ref-0a.dat",
+    "ref-0b.dat",
+    "ref-0c.dat",
+    "ref-10.dat",
+    "ref-278.7.dat",
+    "ref-82.9.dat"
+]
+
+def print_raw_stats():
+    for dat_file in dat_files:
+        dat = read_dat (dat_file)
+        vals = np.array(get_rawvals(dat))
+        mean = vals.mean()
+        std = vals.std()
+        print("{:15s} {:8.1f} {:8.1f} {:8.2f}%".format(
+            dat_file, mean, std, std/mean*100))
+
+def raw_to_grams(val):
+    return (val - rawval_for_0) / (rawval_for_10 - rawval_for_0) * 10
+
+def lpf_step (val, newval, dt, tc):
+    factor = 2 * 3.1416 * 1/tc * dt;
+    if factor > 1:
+        factor = 1;
+    return val * (1 - factor) + newval * factor
+
+def write_dat(file, arr):
+    with open(file,"w") as outf:
+        for row in arr:
+            print(row[0], row[1], file=outf)
+
+def convert_grams(file):
+    dat = read_dat (file)
+    grams = []
+    for row in dat:
+        ts = row[0]
+        grams.append([ts,raw_to_grams(row[1])])
+    return grams
+
+def do_lpf():
+    lpf = []
+    tc = 3
+    grams = 0
+    for row in unfiltered:
+        ts = row[0]
+        if len(lpf) == 0:
+            dt = .1
+        else:
+            dt = ts - last
+        last = ts
+        grams = lpf_step (grams, row[1], dt, tc)
+        lpf.append([ts, grams])
+    return lpf
+
+unfiltered = convert_grams ("filter-raw.dat")
+write_dat ("unfiltered.dat", unfiltered)
+
+lpf = do_lpf()
+write_dat ("lpf.dat", lpf)
+
+
+
+
