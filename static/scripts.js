@@ -1,4 +1,5 @@
-var autotare_service_uuid = '75c3c6d0-75e4-4223-a823-bdc65e738996'
+var xautotare_service_uuid = '75c3c6d0-75e4-4223-a823-bdc65e738996'
+var autotare_service_uuid = '0000ec00-0000-1000-8000-00805f9b34fb'
 var autotare_weight_uuid = '722bc7b5-1728-4e39-8867-3161d8dd5e20'
 
 var cal1_raw = -9550;
@@ -55,69 +56,67 @@ function handle_weight(ev) {
   $("#grams").html(grams.toFixed(1));
 }
 
-var the_server;
+var device = null;
+var server = null;
+var services = null;
 
-function do_list () {
-  navigator.bluetooth.requestDevice({
-    filters: [{
+//;    return (server.getPrimaryServices());
+
+async function do_connect () {
+  try {
+    var name_filter = {
       name: 'autotare'
-    }],
-    optionalServices: [autotare_service_uuid]
-  }).then(device => {
-    console.log(device);
-    console.log("connected to", device.name);
-    return device.gatt.connect();
-  }).then(server => {
-    console.log ("server", server);
-    the_server = server;
+    };
 
-    return (server.getPrimaryServices());
-  }).then(services => {
-    services.forEach(service => {
-      console.log ("slist", service)
-    })
-  })
-  .catch(error => {
-    console.log(error);
-    console.log(error.message);
-  });
-}
+    var service_filter = {
+      services: [autotare_service_uuid]
+    };
 
-
-
-function do_button1 () {
-  navigator.bluetooth.requestDevice({
-    filters: [{
-      name: 'autotare'
-    }],
-    optionalServices: [autotare_service_uuid]
-  }).then(device => {
-    console.log(device);
-    console.log("connected to", device.name);
-    return device.gatt.connect();
-  }).then(server => {
-    console.log ("server", server);
-    the_server = server;
+    device = await navigator.bluetooth.requestDevice({
+      filters: [name_filter],
+      optionalServices: [autotare_service_uuid]
+    });
     
-    return server.getPrimaryService(autotare_service_uuid);
-  }).then(service => {
+    console.log(device);
+    console.log("connected to", device.name);
+    
+    server = await device.gatt.connect();
+    
+    console.log ("xserver", server);
+    
+    services = await server.getPrimaryServices();
+    console.log(services);
+
+    console.log ("getting service");
+    service = await server.getPrimaryService(autotare_service_uuid);
     console.log("service", service);
-    return service.getCharacteristic(autotare_weight_uuid);
-  }).then(characteristic => {
+    
+    characteristic = await service.getCharacteristic(autotare_weight_uuid);
     console.log("characteristic", characteristic);
-    return characteristic.startNotifications();
-  }).then(characteristic => {
+    
+    await characteristic.startNotifications();
+    
     characteristic.addEventListener('characteristicvaluechanged',
 				    handle_weight);
     console.log("notifications started")
-  }).catch(error => {
+  } catch (error) {
     console.log(error);
-  });
+  }
 }
 
+async function do_disconnect () {
+  try {
+    if (device && device.gatt.connected) {
+      device.gatt.disconnect()
+    }
+  } catch (error) {
+    console.log(error);
+  }
+}
 
 $(function () {
-  $("#button1").click(do_button1)
+  $("#connect").click(do_connect)
+  $("#disconnect").click(do_disconnect)
   $("#tare").click(do_tare)
   $("#cal10").click(do_cal10)
 });

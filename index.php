@@ -29,7 +29,9 @@ $body .= "</div>\n";
 
 
 $body .= "<div>\n";
-$body .= "<button id='button1'>connect</button>\n";
+$body .= "<button id='connect'>connect</button>\n";
+$body .= "<button id='disconnect'>disconnect</button>\n";
+
 $body .= "</div>\n";
 
 $body .= "<div>\n";

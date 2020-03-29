@@ -1,3 +1,8 @@
+https://googlechrome.github.io/samples/web-bluetooth/index.html
+
+https://www.novelbits.io/bluetooth-gatt-services-characteristics/
+https://webbluetoothcg.github.io/web-bluetooth/#the-gatt-blocklist
+
 chrome://flags/#enable-experimental-web-platform-features
 
 https://devzone.nordicsemi.com/f/nordic-q-a/14876/problem-with-ble-web-api-and-nrf52832
@@ -237,3 +242,39 @@ adafruit example characteristics
 00002aa6-0000-1000-8000-00805f9b34fb
 6e400002-b5a3-f393-e0a9-e50e24dcca9e
 6e400003-b5a3-f393-e0a9-e50e24dcca9e
+
+================================================================
+https://www.bluetooth.com/specifications/assigned-numbers/generic-access-profile/
+GAP generic access profile
+
+gatttool -b b8:27:eb:ef:94:dc -t random -I
+
+sisbot ble advertising
+0x020106030300EC0E08736973626F7439343533653736
+02 len
+01 type = flags
+06 data
+
+03 len
+03 type = complete list of 16 bit service class uuids
+00EC data
+
+0E len
+08 type  shortened local name
+736973626F7439343533653736
+ s i s b o t 9 4 5 3 e 7 6
+
+autotare advertising
+0x02010611079689735EC6BD23A82342E475D0C6C37509096175746F74617265
+
+02 len
+01 type = flags
+06 data
+
+11 len
+07 type = complete list of 128 service class uuids
+96 89 73 5E C6 BD 23 A8 23 42 E4 75 D0 C6 C3 75
+
+09
+09 complete local name
+61 75 74 6F 74 61 72 65
