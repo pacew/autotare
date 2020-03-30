@@ -1,0 +1,2 @@
+set xrange [16.9:17.2]
+plot "unfiltered.dat", "g.dat" with lines, "lpf.dat" with lines

@@ -63,7 +63,7 @@ def convert_grams(file):
 
 def do_lpf():
     lpf = []
-    tc = 3
+    tc = 1
     grams = 0
     for row in unfiltered:
         ts = row[0]
@@ -82,6 +82,65 @@ write_dat ("unfiltered.dat", unfiltered)
 lpf = do_lpf()
 write_dat ("lpf.dat", lpf)
 
+
+from filterpy.kalman import KalmanFilter
+from filterpy.common import Q_discrete_white_noise
+
+kf = KalmanFilter(dim_x=2, dim_z=1)
+# grams, grams velocity
+kf.x = np.array([
+    [0.0],
+    [0.0]
+    ])
+
+# state transition matrix
+kf.F = np.array([
+    [1., 1.],
+    [0., 1.]
+    ])
+
+# measurement function
+kf.H = np.array ([
+    [1., 0.]
+    ])
+
+# covariance matrix
+kf.P = np.array([
+    [100**2,     0],
+    [    0, .1**2]
+    ]);
+
+# state uncertainty
+kf.R = 2**2
+
+# process uncertainty
+kf.Q = np.array([
+    [.1**2,   .001],
+    [  .001,     2**2]
+    ]);
+
+filtered_g = []
+filtered_gdot = []
+last_grams = unfiltered[0][1]
+for row in unfiltered:
+    ts = row[0]
+    grams = row[1]
+    
+    if abs(grams - kf.x[0][0]) > 50:
+        continue
+
+    kf.predict()
+    kf.update([grams])
+
+    g = kf.x[0][0]
+    gdot = kf.x[1][0]
+    
+    filtered_g.append([ts, g])
+    filtered_gdot.append([ts, gdot])
+
+write_dat ("g.dat", filtered_g)
+write_dat ("gdot.dat", filtered_gdot)
+    
 
 
 
